@@ -1,0 +1,94 @@
+{% from "macros.html" import status_badge, type_badge %}
+<!-- Pending Applications Table -->
+<div class="card mb-4" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>⏳ Pending Approvals ({{ pending|length }})</h3>
+    {% if pending %}
+    <span class="badge badge-warning">Action Required</span>
+    {% endif %}
+  </div>
+  {% if pending %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Student</th>
+          <th>Subject</th>
+          <th>CIA</th>
+          <th>Date</th>
+          <th>Reason</th>
+          <th>Type</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for app in pending %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>
+            <div class="fw-bold">{{ app.student_name }}</div>
+            <div class="text-muted">{{ app.register_number }}</div>
+            <div style="font-size:11px;color:#9ca3af;">{{ app.student_email }}</div>
+          </td>
+          <td>
+            <div class="fw-bold" style="font-size:13px;">{{ app.subject.subject_name }}</div>
+            <div class="text-muted">{{ app.subject.subject_code }} | Sem {{ app.semester }}</div>
+          </td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td style="font-size:12px;">{{ app.cia_date.strftime('%d %b %Y') }}</td>
+          <td>
+            <span style="font-size:12px;">{{ app.reason_type.replace('_',' ').title() }}</span>
+            {% if app.reason_detail %}<div style="font-size:11px;color:#9ca3af;">{{ app.reason_detail[:50] }}...</div>{% endif %}
+          </td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td>
+            <button onclick="openActionModal({{ app.id }}, '{{ app.student_name }}')" class="btn btn-primary btn-sm">Review</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:40px;">
+    <div class="icon">✅</div>
+    <h4>All Clear!</h4>
+    <p>No pending applications for review.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Reviewed Applications -->
+<div class="card">
+  <div class="card-header">
+    <h3>📋 Reviewed Applications</h3>
+  </div>
+  {% if reviewed %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Your Decision</th><th>Date</th></tr>
+      </thead>
+      <tbody>
+        {% for app in reviewed %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>
+            <div class="fw-bold">{{ app.student_name }}</div>
+            <div class="text-muted">{{ app.register_number }}</div>
+          </td>
+          <td>{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td>{{ status_badge(reviewed_status_field(app)) }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ reviewed_time_field(app).strftime('%d %b %Y') if reviewed_time_field(app) else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:30px;"><p>No reviewed applications yet.</p></div>
+  {% endif %}
+</div>

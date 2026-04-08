@@ -1,0 +1,191 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Manage Staff{% endblock %}
+{% block page_title %}Staff Management{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint=='admin.dashboard' %}active{% endif %}"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item {% if request.endpoint=='admin.bulk_upload' %}active{% endif %}"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item {% if request.endpoint=='admin.manage_staff' %}active{% endif %}"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item {% if request.endpoint=='admin.manage_subjects' %}active{% endif %}"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item {% if request.endpoint=='admin.manage_cia_dates' %}active{% endif %}"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item {% if request.endpoint in ['admin.all_applications','admin.view_application'] %}active{% endif %}"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item {% if request.endpoint=='admin.view_absentees' %}active{% endif %}"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>👥 Staff Management</h2>
+    <p>Only the Admin (Exam Cell Coordinator) can add/manage staff accounts.</p>
+  </div>
+  <button onclick="openModal('addStaffModal')" class="btn btn-primary">+ Add Staff</button>
+</div>
+
+<div style="padding:14px 16px;background:#e8f5e9;border-radius:10px;border-left:4px solid #2e7d32;margin-bottom:14px;font-size:13px;color:#374151;">
+  <strong style="color:#1b5e20;">ℹ️ Role Clarification:</strong><br>
+  <strong>Admin</strong> = Exam Cell Coordinator (you — system administrator, single account, manages all staff)<br>
+  <strong>Coordinator</strong> = Department Coordinator (added by you below, approves LATE submissions only)
+</div>
+
+<div style="padding:12px 16px;background:#fff3e0;border-radius:10px;border-left:4px solid #f57c00;margin-bottom:18px;font-size:13px;color:#374151;">
+  <strong style="color:#e65100;">📋 Approval Flows:</strong><br>
+  <strong>PRE-submission:</strong> Subject Staff → Tutor → HOD (Final) &nbsp;|&nbsp;
+  <strong>LATE-submission:</strong> Subject Staff → Tutor → Dept. Coordinator → HOD (Final)
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>All Staff ({{ staff_list|length }})</h3></div>
+  {% if staff_list %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for s in staff_list %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ s.name }}</div></td>
+          <td style="font-size:12px;">{{ s.email }}</td>
+          <td style="font-size:12px;">{{ s.phone or '—' }}</td>
+          <td>
+            {% if s.role == 'subject_staff' %}<span class="badge badge-info">📚 Subject Staff</span>
+            {% elif s.role == 'tutor' %}<span class="badge badge-primary">👨‍🏫 Tutor</span>
+            {% elif s.role == 'hod' %}<span class="badge badge-warning">🏛️ HOD</span>
+            {% elif s.role == 'coordinator' %}<span class="badge badge-success">🎓 Dept. Coordinator</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if s.secondary_role %}
+              {% if s.secondary_role == 'subject_staff' %}<span class="badge badge-info">📚 Subject Staff</span>
+              {% elif s.secondary_role == 'tutor' %}<span class="badge badge-primary">👨‍🏫 Tutor</span>
+              {% elif s.secondary_role == 'hod' %}<span class="badge badge-warning">🏛️ HOD</span>
+              {% elif s.secondary_role == 'coordinator' %}<span class="badge badge-success">🎓 Dept. Coordinator</span>
+              {% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td style="font-size:12px;">{{ s.department or '—' }}</td>
+          <td>{% if s.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal({{ s.id }},'{{ s.name }}','{{ s.phone or '' }}','{{ s.department or '' }}','{{ s.secondary_role or '' }}')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="{{ url_for('admin.toggle_staff', uid=s.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-sm {{ 'btn-warning' if s.is_active else 'btn-success' }}">
+                  {{ '🔒' if s.is_active else '🔓' }}
+                </button>
+              </form>
+              <form method="POST" action="{{ url_for('admin.delete_staff', uid=s.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Delete {{ s.name }}? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:50px;"><div class="icon">👥</div><h4>No Staff Added Yet</h4><p>Click "Add Staff" to add department staff.</p></div>
+  {% endif %}
+</div>
+
+<!-- Add Staff Modal -->
+<div class="modal-overlay" id="addStaffModal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-header">
+      <h3>➕ Add Staff Member</h3>
+      <span class="modal-close" onclick="closeModal('addStaffModal')">✕</span>
+    </div>
+    <form method="POST" action="{{ url_for('admin.add_staff') }}">
+      <div class="grid grid-2" style="gap:14px;">
+        <div class="form-group"><label class="form-label">Full Name *</label><input type="text" name="name" class="form-control" required></div>
+        <div class="form-group"><label class="form-label">Email Address *</label><input type="email" name="email" class="form-control" required></div>
+        <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Primary Role *</label>
+          <select name="role" class="form-control" required>
+            <option value="">-- Select --</option>
+            <option value="subject_staff">Subject Staff</option>
+            <option value="tutor">Tutor</option>
+            <option value="hod">HOD</option>
+            <option value="coordinator">Dept. Coordinator (LATE approvals)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Secondary Role <span style="color:#9ca3af">(optional)</span></label>
+          <select name="secondary_role" class="form-control">
+            <option value="">— None —</option>
+            <option value="subject_staff">Subject Staff</option>
+            <option value="tutor">Tutor</option>
+            <option value="hod">HOD</option>
+            <option value="coordinator">Dept. Coordinator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Department</label>
+          <select name="department" class="form-control">
+            <option value="">Select Dept.</option>
+            <option>Computer Science</option><option>Information Technology</option>
+            <option>Electronics</option><option>Mechanical</option><option>Civil</option><option>EEE</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Login Password</label>
+          <input type="text" name="password" class="form-control" value="staff123">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" onclick="closeModal('addStaffModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">✅ Add Staff</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Staff Modal -->
+<div class="modal-overlay" id="editStaffModal">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h3>✏️ Edit Staff</h3>
+      <span class="modal-close" onclick="closeModal('editStaffModal')">✕</span>
+    </div>
+    <form method="POST" id="editForm">
+      <div class="form-group"><label class="form-label">Name</label><input type="text" name="name" id="editName" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" id="editPhone" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Department</label><input type="text" name="department" id="editDept" class="form-control"></div>
+      <div class="form-group">
+        <label class="form-label">Secondary Role</label>
+        <select name="secondary_role" id="editSecRole" class="form-control">
+          <option value="">— None —</option>
+          <option value="subject_staff">Subject Staff</option>
+          <option value="tutor">Tutor</option>
+          <option value="hod">HOD</option>
+          <option value="coordinator">Dept. Coordinator</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">New Password <span style="color:#9ca3af;font-size:11px;">(blank = keep current)</span></label><input type="text" name="password" class="form-control" placeholder="Leave blank to keep"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" onclick="closeModal('editStaffModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openEditModal(uid, name, phone, dept, secRole) {
+  document.getElementById('editName').value    = name;
+  document.getElementById('editPhone').value   = phone;
+  document.getElementById('editDept').value    = dept;
+  document.getElementById('editSecRole').value = secRole;
+  document.getElementById('editForm').action   = `/admin/staff/edit/${uid}`;
+  openModal('editStaffModal');
+}
+</script>
+{% endblock %}

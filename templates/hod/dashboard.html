@@ -1,0 +1,311 @@
+{% extends "dashboard_base.html" %}
+{% from "macros.html" import status_badge, type_badge %}
+{% block title %}HOD Dashboard{% endblock %}
+{% block page_title %}HOD Dashboard{% endblock %}
+
+{% block sidebar_nav %}
+<a href="{{ url_for('hod.dashboard') }}" class="nav-item active"><span class="nav-icon">🏠</span> Dashboard</a>
+{% if current_user.secondary_role == 'subject_staff' or current_user.role == 'subject_staff' %}
+<a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">📚</span> Staff Dashboard</a>
+{% endif %}
+<hr style="border:none;border-top:1px solid var(--color-border-secondary);margin:10px 0;">
+<span class="nav-section-label">Download Applications</span>
+<a href="{{ url_for('hod.download_applications', fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="nav-item"><span class="nav-icon">📥</span> Excel</a>
+<a href="{{ url_for('hod.download_applications', fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="nav-item"><span class="nav-icon">📄</span> PDF</a>
+{% endblock %}
+
+{% block head %}
+<style>
+.year-tab { cursor:pointer;padding:8px 18px;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;border:1.5px solid #e0e7ff;border-bottom:none;background:#f8f9ff;color:#6b7280;transition:all .2s; }
+.year-tab.active { background:#1a237e;color:#fff;border-color:#1a237e; }
+.sec-btn { padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;border:1.5px solid #c7d2fe;background:transparent;color:#1a237e;cursor:pointer;transition:all .2s; }
+.sec-btn.active { background:#1a237e;color:#fff;border-color:#1a237e; }
+.year-panel { display:none; }
+.year-panel.active { display:block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div><h2>Welcome, {{ current_user.name }}! 🏛️</h2><p>HOD-level approval & retest window management.</p></div>
+  <div style="display:flex;gap:8px;">
+    <a href="{{ url_for('hod.download_applications', fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-outline">📥 Excel</a>
+    <a href="{{ url_for('hod.download_applications', fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-primary">📄 PDF</a>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-info"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total</div></div></div>
+  <div class="stat-card orange"><div class="stat-icon">⏳</div><div class="stat-info"><div class="stat-value">{{ stats.pending }}</div><div class="stat-label">Pending</div></div></div>
+  <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-info"><div class="stat-value">{{ stats.approved }}</div><div class="stat-label">Approved</div></div></div>
+  <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-info"><div class="stat-value">{{ stats.rejected }}</div><div class="stat-label">Rejected</div></div></div>
+</div>
+
+<!-- Year-wise Section-wise Applications -->
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>📊 Year-wise & Section-wise Applications</h3>
+    <span class="badge badge-info">Click year and section to filter</span>
+  </div>
+  <div class="card-body">
+    <!-- Year Tabs -->
+    <div style="display:flex;gap:0;margin-bottom:0;border-bottom:1.5px solid #e0e7ff;">
+      {% for year in range(1,5) %}
+      <div class="year-tab {% if loop.first %}active{% endif %}" onclick="showYear({{ year }})" id="yearTab{{ year }}">
+        Year {{ year }}
+        <span style="font-size:10px;background:#e0e7ff;color:#1a237e;padding:2px 6px;border-radius:10px;margin-left:4px;">
+          {{ year_section_stats[year]['A'].total + year_section_stats[year]['B'].total + year_section_stats[year]['C'].total }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% for year in range(1,5) %}
+    <div id="yearPanel{{ year }}" class="year-panel {% if loop.first %}active{% endif %}" style="padding-top:16px;">
+      <!-- Section Buttons -->
+      <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
+        <span style="font-size:12px;font-weight:700;color:#374151;">Section:</span>
+        <button class="sec-btn active" onclick="showSection({{ year }},'A',this)" id="secBtn{{ year }}A">A ({{ year_section_stats[year]['A'].total }})</button>
+        <button class="sec-btn" onclick="showSection({{ year }},'B',this)" id="secBtn{{ year }}B">B ({{ year_section_stats[year]['B'].total }})</button>
+        <button class="sec-btn" onclick="showSection({{ year }},'C',this)" id="secBtn{{ year }}C">C ({{ year_section_stats[year]['C'].total }})</button>
+        <a href="{{ url_for('hod.dashboard') }}?year={{ year }}" class="btn btn-outline btn-sm" style="margin-left:auto;">Filter Dashboard</a>
+      </div>
+
+      {% for sec in sections %}
+      <div id="secPanel{{ year }}{{ sec }}" style="display:{% if loop.first %}block{% else %}none{% endif %};">
+        <!-- Stat mini cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+          {% set sd = year_section_stats[year][sec] %}
+          <div style="padding:10px 14px;background:#e8eaf6;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:800;color:#1a237e;">{{ sd.total }}</div>
+            <div style="font-size:11px;color:#6b7280;">Total</div>
+          </div>
+          <div style="padding:10px 14px;background:#fff3e0;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:800;color:#e65100;">{{ sd.pending }}</div>
+            <div style="font-size:11px;color:#6b7280;">Pending</div>
+          </div>
+          <div style="padding:10px 14px;background:#e8f5e9;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:800;color:#2e7d32;">{{ sd.approved }}</div>
+            <div style="font-size:11px;color:#6b7280;">Approved</div>
+          </div>
+          <div style="padding:10px 14px;background:#ffebee;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:800;color:#c62828;">{{ sd.rejected }}</div>
+            <div style="font-size:11px;color:#6b7280;">Rejected</div>
+          </div>
+        </div>
+        {% if sd.apps %}
+        <div style="overflow-x:auto;max-height:300px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Staff</th><th>HOD</th><th>Final</th></tr></thead>
+            <tbody>
+              {% for app in sd.apps[:20] %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td><div class="fw-bold" style="font-size:12px;">{{ app.student_name }}</div><div class="text-muted" style="font-size:10px;">{{ app.register_number }}</div></td>
+                <td style="font-size:11px;">{{ app.subject.subject_name }}</td>
+                <td><span class="badge badge-primary" style="font-size:9px;">CIA {{ app.cia_number }}</span></td>
+                <td>{{ type_badge(app.submission_type) }}</td>
+                <td>{{ status_badge(app.staff_status) }}</td>
+                <td>{{ status_badge(app.hod_status) }}</td>
+                <td>{{ status_badge(app.final_status) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if sd.apps|length > 20 %}
+        <div style="text-align:center;padding:8px;font-size:11px;color:#6b7280;">
+          Showing 20 of {{ sd.apps|length }}. <a href="{{ url_for('hod.dashboard') }}?year={{ year }}&section={{ sec }}">View all →</a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state" style="padding:20px;text-align:center;color:#9ca3af;">No applications for Year {{ year }} Section {{ sec }}.</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Pending Applications -->
+{% if pending %}
+<div class="card" style="margin-bottom:20px;border-top:3px solid #e65100;">
+  <div class="card-header">
+    <h3>⏳ Pending Approvals ({{ pending|length }})</h3>
+    <span class="badge badge-warning">Requires HOD Action</span>
+  </div>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Student</th><th>Year/Sec</th><th>Subject</th><th>CIA</th><th>Type</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for app in pending %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td><span class="badge badge-primary" style="font-size:9px;">Y{{ app.student_year or app.student.year or '?' }}/{{ app.student_section or app.student.section or '?' }}</span></td>
+          <td style="font-size:12px;">{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td style="font-size:11px;">{{ app.submitted_at.strftime('%d %b %Y') }}</td>
+          <td>
+            <button type="button" class="btn btn-success btn-sm" onclick="showActionModal({{ app.id }})">✅ Approve</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="showActionModal({{ app.id }})">❌ Reject</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Rejected Applications (Can be retransmitted) -->
+{% set rejected_apps = reviewed | selectattr('final_status', 'equalto', 'rejected') | list %}
+{% if rejected_apps %}
+<div class="card" style="margin-bottom:20px;border-top:3px solid #c62828;">
+  <div class="card-header">
+    <h3>❌ Rejected Applications ({{ rejected_apps|length }})</h3>
+    <span class="badge badge-danger">Can be Retransmitted</span>
+  </div>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Student</th><th>Year/Sec</th><th>Subject</th><th>CIA</th><th>Type</th><th>Rejected By</th><th>Remark</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for app in rejected_apps %}
+        <tr style="background:#fff5f5;">
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td><span class="badge badge-primary" style="font-size:9px;">Y{{ app.student_year or app.student.year or '?' }}/{{ app.student_section or app.student.section or '?' }}</span></td>
+          <td style="font-size:12px;">{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td style="font-size:11px;">
+            {% if app.hod_status == 'rejected' %}
+              HOD
+            {% elif app.coordinator_status == 'rejected' %}
+              Coordinator
+            {% elif app.tutor_status == 'rejected' %}
+              Tutor
+            {% elif app.staff_status == 'rejected' %}
+              Staff
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td style="font-size:11px;color:#6b7280;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ app.hod_remark or app.coordinator_remark or app.tutor_remark or app.staff_remark or '—' }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('hod.retransmit', app_id=app.id) }}" style="display:inline;">
+              <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Retransmit this application to staff for re-review?')">🔄 Retransmit</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Retest Window Controls -->
+<div class="card mb-4" style="margin-bottom:20px;">
+  <div class="card-header">
+    <h3>🔄 Retest Window Control</h3>
+    <span class="badge badge-info">HOD & Admin</span>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">
+      {% for cia in all_cia %}
+      {% set is_open = cia.is_application_open() %}
+      <div class="cia-window-card {{ 'open' if is_open else 'closed' }}">
+        <div class="cia-window-header">
+          <div>
+            <span class="window-status-dot {{ 'dot-open' if is_open else 'dot-closed' }}"></span>
+            <strong style="font-size:13px;">{{ cia.subject.subject_name }}</strong>
+            <span class="badge badge-primary" style="margin-left:5px;font-size:9px;">CIA {{ cia.cia_number }}</span>
+          </div>
+          <span style="font-size:11px;color:#6b7280;">Sem {{ cia.semester }}</span>
+        </div>
+        <div class="cia-window-body">
+          <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">
+            Exam: {{ cia.exam_date.strftime('%d %b %Y') }} &nbsp;|&nbsp;
+            {% if cia.application_end_date %}Deadline: <strong style="color:#e65100;">{{ cia.application_end_date.strftime('%d %b %Y') }}</strong>{% else %}No deadline{% endif %}
+          </div>
+          <div class="cia-window-actions">
+            <form method="POST" action="{{ url_for('hod.toggle_window', cid=cia.id) }}">
+              <button class="btn btn-sm {{ 'btn-danger' if is_open else 'btn-success' }}">{{ '🔒 Close' if is_open else '🔓 Open' }}</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Action Modal -->
+<div id="actionModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:90vw;">
+    <h3 style="margin-bottom:12px;" id="modalTitle">Review Application</h3>
+    <form method="POST" id="actionForm">
+      <input type="hidden" name="action" id="actionType" value="approve">
+      <div class="form-group">
+        <label class="form-label">Remark (optional)</label>
+        <textarea name="remark" class="form-control" rows="3" placeholder="Add a remark..."></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-danger" onclick="setActionType('reject')">Reject</button>
+        <button type="submit" class="btn btn-success" onclick="setActionType('approve')">Approve</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.cia-window-card{border:1.5px solid #e0e7ff;border-radius:12px;overflow:hidden;transition:box-shadow .2s;}
+.cia-window-card.open{border-color:#a5d6a7;}
+.cia-window-card.closed{border-color:#ef9a9a;}
+.cia-window-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(90deg,#f0f3ff,#f8f9ff);border-bottom:1px solid #e0e7ff;}
+.cia-window-card.open .cia-window-header{background:linear-gradient(90deg,#e8f5e9,#f1f8f1);border-color:#c8e6c9;}
+.cia-window-card.closed .cia-window-header{background:linear-gradient(90deg,#ffebee,#fff5f5);border-color:#ffcdd2;}
+.window-status-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;}
+.dot-open{background:#2e7d32;animation:dot-pulse 1.4s ease-in-out infinite;}
+.dot-closed{background:#e53935;}
+@keyframes dot-pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.5);opacity:.6;}}
+.cia-window-body{padding:12px 16px;}
+.cia-window-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+</style>
+<script>
+function showYear(year) {
+  for (let y = 1; y <= 4; y++) {
+    document.getElementById('yearTab'+y).classList.toggle('active', y===year);
+    document.getElementById('yearPanel'+y).classList.toggle('active', y===year);
+  }
+}
+function showSection(year, sec, btn) {
+  ['A','B','C'].forEach(s => {
+    document.getElementById('secBtn'+year+s).classList.remove('active');
+    document.getElementById('secPanel'+year+s).style.display = 'none';
+  });
+  btn.classList.add('active');
+  document.getElementById('secPanel'+year+sec).style.display = 'block';
+}
+function showActionModal(appId) {
+  document.getElementById('actionForm').action = '/hod/action/' + appId;
+  document.getElementById('actionType').value = 'approve';
+  document.getElementById('modalTitle').textContent = 'Review Application';
+  const m = document.getElementById('actionModal');
+  m.style.display = 'flex';
+}
+function setActionType(value) {
+  document.getElementById('actionType').value = value;
+}
+function closeModal() {
+  document.getElementById('actionModal').style.display = 'none';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Verify OTP{% endblock %}
+{% block head %}{% include "auth/_anim_styles.html" %}{% endblock %}
+{% block body %}
+<div class="auth-page">
+  <div class="orb orb1"></div><div class="orb orb2"></div><div class="ring1"></div><div class="ring2"></div>
+  <div id="pts"></div>
+  <div class="auth-card">
+    <div class="card-corner cc-tl"></div><div class="card-corner cc-br"></div>
+    <div class="auth-logo">
+      <img src="{{ url_for('static', filename='ace_logo.jpg') }}" alt="ACE"
+           onerror="this.outerHTML='<div style=\'width:72px;height:72px;background:linear-gradient(135deg,#1a237e,#e53935);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:12px;\'>🔢</div>'">
+      <h1>Enter OTP</h1>
+      <p>6-digit code sent to <strong>{{ email }}</strong></p>
+    </div>
+    <form method="POST" id="otpForm">
+      <div class="otp-inputs fi1">
+        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" id="d0">
+        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" id="d1">
+        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" id="d2">
+        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" id="d3">
+        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" id="d4">
+        <input class="otp-box" maxlength="1" type="text" inputmode="numeric" id="d5">
+      </div>
+      <input type="hidden" name="otp" id="otpHidden">
+      <div class="fi2" style="margin-top:6px;">
+        <button type="submit" class="btn-auth">✅ Verify OTP</button>
+      </div>
+    </form>
+    <p class="auth-footer-link fi3"><a href="{{ url_for('auth.forgot_password') }}">← Resend OTP</a></p>
+  </div>
+</div>
+<script>
+(function(){const c=document.getElementById('pts');for(let i=0;i<12;i++){const p=document.createElement('div');p.className='particle';const sz=Math.random()*4+2;p.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;bottom:-10px;background:rgba(255,255,255,.5);animation-duration:${7+Math.random()*9}s;animation-delay:${Math.random()*8}s;`;c.appendChild(p);}})();
+const boxes=document.querySelectorAll('.otp-box');
+boxes.forEach((b,i)=>{
+  b.addEventListener('input',e=>{
+    if(b.value.length===1 && i<5) boxes[i+1].focus();
+    const otp=[...boxes].map(x=>x.value).join('');
+    document.getElementById('otpHidden').value=otp;
+  });
+  b.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!b.value&&i>0)boxes[i-1].focus();});
+});
+boxes[0].focus();
+document.getElementById('otpForm').addEventListener('submit',()=>{
+  const otp=[...boxes].map(x=>x.value).join('');
+  document.getElementById('otpHidden').value=otp;
+});
+</script>
+{% endblock %}

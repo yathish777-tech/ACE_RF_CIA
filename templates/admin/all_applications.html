@@ -1,0 +1,144 @@
+{% extends "dashboard_base.html" %}
+{% from "macros.html" import status_badge, type_badge %}
+{% block title %}All Applications{% endblock %}
+{% block page_title %}All Applications{% endblock %}
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item active"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div><h2>📋 All Applications</h2><p>Filter by year and section. Download as Excel or PDF.</p></div>
+  <div style="display:flex;gap:8px;">
+    <a href="{{ url_for('admin.download_applications', fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-outline">📥 Excel</a>
+    <a href="{{ url_for('admin.download_applications', fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-primary">📄 PDF</a>
+  </div>
+</div>
+
+<!-- Year-Section Filter Tabs -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><h3>📊 Year-wise & Section-wise Overview</h3></div>
+  <div class="card-body">
+    <div style="display:flex;gap:0;border-bottom:1.5px solid #e0e7ff;margin-bottom:16px;">
+      <a href="{{ url_for('admin.all_applications') }}" class="year-tab-link {% if not year_filter %}active{% endif %}" style="padding:8px 16px;font-size:12px;font-weight:700;text-decoration:none;border-radius:8px 8px 0 0;border:1.5px solid #e0e7ff;border-bottom:none;background:{% if not year_filter %}#1a237e{% else %}#f8f9ff{% endif %};color:{% if not year_filter %}#fff{% else %}#6b7280{% endif %};">All</a>
+      {% for year in range(1,5) %}
+      {% set yr_total = year_section_stats[year]['A'].total + year_section_stats[year]['B'].total + year_section_stats[year]['C'].total %}
+      <a href="{{ url_for('admin.all_applications') }}?year={{ year }}" class="year-tab-link {% if year_filter==year %}active{% endif %}" style="padding:8px 16px;font-size:12px;font-weight:700;text-decoration:none;border-radius:8px 8px 0 0;border:1.5px solid #e0e7ff;border-bottom:none;background:{% if year_filter==year %}#1a237e{% else %}#f8f9ff{% endif %};color:{% if year_filter==year %}#fff{% else %}#6b7280{% endif %};">
+        Year {{ year }} <span style="font-size:10px;background:rgba(255,255,255,0.3);padding:1px 5px;border-radius:8px;">{{ yr_total }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if year_filter %}
+    <!-- Section buttons for selected year -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
+      <span style="font-size:12px;font-weight:700;color:#374151;">Section:</span>
+      <a href="{{ url_for('admin.all_applications') }}?year={{ year_filter }}" class="btn btn-sm {% if not section_filter %}btn-primary{% else %}btn-outline{% endif %}">All</a>
+      {% for sec in sections %}
+      <a href="{{ url_for('admin.all_applications') }}?year={{ year_filter }}&section={{ sec }}" class="btn btn-sm {% if section_filter==sec %}btn-primary{% else %}btn-outline{% endif %}">
+        Section {{ sec }} ({{ year_section_stats[year_filter][sec].total }})
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- Mini stats for selected year/section -->
+    {% if section_filter %}
+    {% set sd = year_section_stats[year_filter][section_filter] %}
+    {% else %}
+    {% set sd = {'total': apps|length, 'pending': apps|selectattr('final_status','equalto','pending')|list|length, 'approved': apps|selectattr('final_status','equalto','approved')|list|length, 'rejected': apps|selectattr('final_status','equalto','rejected')|list|length} %}
+    {% endif %}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+      <div style="padding:10px;background:#e8eaf6;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#1a237e;">{{ sd.total }}</div><div style="font-size:11px;color:#6b7280;">Total</div></div>
+      <div style="padding:10px;background:#fff3e0;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#e65100;">{{ sd.pending }}</div><div style="font-size:11px;color:#6b7280;">Pending</div></div>
+      <div style="padding:10px;background:#e8f5e9;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#2e7d32;">{{ sd.approved }}</div><div style="font-size:11px;color:#6b7280;">Approved</div></div>
+      <div style="padding:10px;background:#ffebee;border-radius:8px;text-align:center;"><div style="font-size:20px;font-weight:800;color:#c62828;">{{ sd.rejected }}</div><div style="font-size:11px;color:#6b7280;">Rejected</div></div>
+    </div>
+    {% else %}
+    <!-- All years overview grid -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+      {% for year in range(1,5) %}
+      <div style="border:1.5px solid #e0e7ff;border-radius:8px;overflow:hidden;">
+        <div style="background:#1a237e;color:#fff;padding:8px 12px;font-weight:700;font-size:12px;">Year {{ year }}</div>
+        {% for sec in sections %}
+        {% set sd = year_section_stats[year][sec] %}
+        <div style="padding:8px 12px;border-top:0.5px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;">
+          <a href="{{ url_for('admin.all_applications') }}?year={{ year }}&section={{ sec }}" style="font-size:12px;font-weight:700;color:#1a237e;text-decoration:none;">Section {{ sec }}</a>
+          <div style="display:flex;gap:4px;">
+            <span style="font-size:10px;padding:2px 5px;background:#e8eaf6;border-radius:4px;font-weight:700;">{{ sd.total }}</span>
+            {% if sd.pending > 0 %}<span style="font-size:10px;padding:2px 5px;background:#fff3e0;border-radius:4px;color:#e65100;font-weight:700;">{{ sd.pending }}P</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Applications Table -->
+<div class="card">
+  <div class="card-header">
+    <h3>📋 Applications ({{ apps|length }})
+      {% if year_filter %}<span class="badge badge-primary">Year {{ year_filter }}</span>{% endif %}
+      {% if section_filter %}<span class="badge badge-info">Section {{ section_filter }}</span>{% endif %}
+    </h3>
+    <div style="display:flex;gap:8px;">
+      <a href="{{ url_for('admin.download_applications', fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-outline btn-sm">📥 Excel</a>
+      <a href="{{ url_for('admin.download_applications', fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-primary btn-sm">📄 PDF</a>
+    </div>
+  </div>
+  {% if apps %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Student</th><th>Yr/Sec</th><th>Subject</th><th>CIA</th><th>Type</th>
+          <th>Submitted</th><th>Staff</th><th>Tutor</th><th>Coord</th><th>HOD</th><th>Final</th><th>View</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for app in apps %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>
+            <div class="fw-bold" style="font-size:12px;">{{ app.student_name }}</div>
+            <div class="text-muted" style="font-size:10px;">{{ app.register_number }}</div>
+          </td>
+          <td>
+            <span class="badge badge-primary" style="font-size:9px;">Y{{ app.student_year or '?' }}</span>
+            <span class="badge badge-info" style="font-size:9px;">{{ app.student_section or '?' }}</span>
+          </td>
+          <td style="font-size:11px;">{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary" style="font-size:9px;">CIA {{ app.cia_number }}</span></td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td style="font-size:11px;">{{ app.submitted_at.strftime('%d %b %Y') }}</td>
+          <td>{{ status_badge(app.staff_status) }}</td>
+          <td>{{ status_badge(app.tutor_status) }}</td>
+          <td>{{ status_badge(app.coordinator_status) }}</td>
+          <td>{{ status_badge(app.hod_status) }}</td>
+          <td>{{ status_badge(app.final_status) }}</td>
+          <td><a href="{{ url_for('admin.view_application', app_id=app.id) }}" class="btn btn-outline btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:40px;text-align:center;color:#9ca3af;">
+    <div style="font-size:40px;margin-bottom:12px;">📭</div>
+    <p>No applications found for the selected filter.</p>
+    <a href="{{ url_for('admin.all_applications') }}" class="btn btn-outline">Clear Filter</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

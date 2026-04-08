@@ -1,0 +1,113 @@
+{% extends "dashboard_base.html" %}
+{% from "macros.html" import status_badge, type_badge %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block page_title %}Admin Dashboard{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint=='admin.dashboard' %}active{% endif %}"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item {% if request.endpoint=='admin.bulk_upload' %}active{% endif %}"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item {% if request.endpoint=='admin.manage_staff' %}active{% endif %}"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item {% if request.endpoint=='admin.manage_subjects' %}active{% endif %}"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item {% if request.endpoint=='admin.manage_cia_dates' %}active{% endif %}"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item {% if request.endpoint in ['admin.all_applications','admin.view_application'] %}active{% endif %}"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item {% if request.endpoint=='admin.view_absentees' %}active{% endif %}"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Admin Control Panel 🛡️</h2>
+    <p>Full overview of the CIA Retest Management System.</p>
+  </div>
+</div>
+
+<!-- Main Stats -->
+<div class="stats-grid">
+  <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-info"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total Applications</div></div></div>
+  <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-info"><div class="stat-value">{{ stats.approved }}</div><div class="stat-label">Approved</div></div></div>
+  <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-info"><div class="stat-value">{{ stats.rejected }}</div><div class="stat-label">Rejected</div></div></div>
+  <div class="stat-card orange"><div class="stat-icon">⏳</div><div class="stat-info"><div class="stat-value">{{ stats.pending }}</div><div class="stat-label">In Progress</div></div></div>
+  <div class="stat-card info"><div class="stat-icon">📋</div><div class="stat-info"><div class="stat-value">{{ stats.pre }}</div><div class="stat-label">Pre-Submission</div></div></div>
+  <div class="stat-card orange"><div class="stat-icon">⏰</div><div class="stat-info"><div class="stat-value">{{ stats.late }}</div><div class="stat-label">Late Submission</div></div></div>
+  <div class="stat-card blue"><div class="stat-icon">🎓</div><div class="stat-info"><div class="stat-value">{{ stats.students }}</div><div class="stat-label">Registered Students</div></div></div>
+  <div class="stat-card info"><div class="stat-icon">👨‍🏫</div><div class="stat-info"><div class="stat-value">{{ stats.staff }}</div><div class="stat-label">Subject Staff</div></div></div>
+</div>
+
+<div class="grid grid-2" style="gap:24px;margin-bottom:24px;">
+  <!-- Subject-wise Applications -->
+  <div class="card">
+    <div class="card-header"><h3>📊 Applications by Subject</h3></div>
+    <div class="card-body">
+      {% if subject_stats %}
+        {% for s in subject_stats[:8] %}
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:13px;font-weight:600;">{{ s.name }}</span>
+            <span class="badge badge-primary">{{ s.count }}</span>
+          </div>
+          <div style="background:#e0e7ff;border-radius:4px;height:6px;">
+            <div style="background:#1a237e;border-radius:4px;height:6px;width:{{ [(s.count / (subject_stats[0].count or 1)) * 100, 100]|min }}%;transition:width 0.5s;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:20px;"><p>No data yet.</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="card">
+    <div class="card-header"><h3>⚡ Quick Actions</h3></div>
+    <div class="card-body">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <a href="{{ url_for('admin.manage_staff') }}" class="btn btn-primary" style="justify-content:center;padding:14px;">
+          👥 Add / Manage Staff & Tutors
+        </a>
+        <a href="{{ url_for('admin.manage_subjects') }}" class="btn btn-outline" style="justify-content:center;padding:14px;">
+          📚 Add / Manage Subjects
+        </a>
+        <a href="{{ url_for('admin.manage_cia_dates') }}" class="btn btn-outline" style="justify-content:center;padding:14px;">
+          📅 Set CIA & Retest Dates
+        </a>
+        <a href="{{ url_for('admin.all_applications') }}" class="btn btn-outline" style="justify-content:center;padding:14px;">
+          📋 View All Applications
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Applications -->
+<div class="card">
+  <div class="card-header">
+    <h3>🕐 Recent Applications</h3>
+    <a href="{{ url_for('admin.all_applications') }}" class="btn btn-outline btn-sm">View All</a>
+  </div>
+  {% if recent_apps %}
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Submitted</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for app in recent_apps %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td>{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ app.submitted_at.strftime('%d %b %Y') }}</td>
+          <td>{{ status_badge(app.final_status) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:40px;"><div class="icon">📭</div><h4>No applications yet</h4></div>
+  {% endif %}
+</div>
+{% endblock %}

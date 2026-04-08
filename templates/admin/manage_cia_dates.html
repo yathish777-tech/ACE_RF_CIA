@@ -1,0 +1,394 @@
+{% extends "dashboard_base.html" %}
+{% block title %}CIA Dates{% endblock %}
+{% block page_title %}CIA & Retest Date Management{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint=='admin.dashboard' %}active{% endif %}"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item {% if request.endpoint=='admin.bulk_upload' %}active{% endif %}"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item {% if request.endpoint=='admin.manage_staff' %}active{% endif %}"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item {% if request.endpoint=='admin.manage_subjects' %}active{% endif %}"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item {% if request.endpoint=='admin.manage_cia_dates' %}active{% endif %}"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item {% if request.endpoint in ['admin.all_applications','admin.view_application'] %}active{% endif %}"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item {% if request.endpoint=='admin.view_absentees' %}active{% endif %}"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endblock %}
+
+{% block head %}
+<style>
+/* ── CIA DATE CARDS ── */
+.cia-card {
+  border: 1.5px solid #e0e7ff;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+  margin-bottom: 16px;
+}
+.cia-card:hover { box-shadow: 0 4px 20px rgba(26,35,126,0.10); }
+
+.cia-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: linear-gradient(90deg, #f0f3ff 0%, #f8f9ff 100%);
+  border-bottom: 1px solid #e0e7ff;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cia-subject-info { display: flex; align-items: center; gap: 12px; }
+.cia-subject-name { font-weight: 700; font-size: 15px; color: #1a1a2e; }
+.cia-subject-code { font-size: 12px; color: #6b7280; font-weight: 500; }
+.cia-badge {
+  width: 46px; height: 46px; border-radius: 12px;
+  background: #1a237e; color: #fff;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.cia-badge-num { font-size: 18px; line-height: 1; }
+
+/* Status pill */
+.window-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 50px;
+  font-weight: 700; font-size: 13px; border: 2px solid;
+}
+.window-pill.open   { background: #e8f5e9; border-color: #2e7d32; color: #1b5e20; }
+.window-pill.closed { background: #ffebee; border-color: #e53935; color: #b71c1c; }
+.window-pill .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.window-pill.open .dot   { background: #2e7d32; }
+.window-pill.closed .dot { background: #e53935; animation: none; opacity: 0.5; }
+@keyframes pulse-dot {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.4); opacity: 0.6; }
+}
+
+/* Dates row */
+.cia-dates-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-bottom: 1px solid #e0e7ff;
+}
+.cia-date-cell {
+  padding: 14px 20px;
+  border-right: 1px solid #e0e7ff;
+}
+.cia-date-cell:last-child { border-right: none; }
+.cia-date-label {
+  font-size: 11px; font-weight: 600; color: #9ca3af;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+}
+.cia-date-value { font-size: 14px; font-weight: 700; color: #1a1a2e; }
+.cia-date-value.green  { color: #2e7d32; }
+.cia-date-value.orange { color: #e65100; }
+.cia-date-value.red    { color: #c62828; }
+.cia-date-value.muted  { color: #9ca3af; font-weight: 400; font-style: italic; }
+
+/* Auto-close notice */
+.auto-note {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: #9ca3af; margin-top: 4px;
+}
+
+/* Actions row */
+.cia-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #fafbff;
+}
+.cia-action-group {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.cia-action-label {
+  font-size: 11px; color: #6b7280; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+
+/* Reopen date input group */
+.reopen-group {
+  display: flex; align-items: center; gap: 6px;
+}
+.reopen-group input[type="date"] {
+  padding: 6px 10px; border: 1.5px solid #c7d2fe;
+  border-radius: 8px; font-size: 13px; color: #374151;
+  background: #fff; outline: none;
+  transition: border-color 0.2s;
+}
+.reopen-group input[type="date"]:focus { border-color: #1a237e; }
+
+.info-banner {
+  padding: 14px 18px;
+  background: linear-gradient(90deg, #e8eaf6, #f0f3ff);
+  border-radius: 12px;
+  border-left: 4px solid #1a237e;
+  margin-bottom: 20px;
+  font-size: 13px; color: #374151;
+  display: flex; gap: 10px; align-items: flex-start;
+}
+.info-banner .info-icon { font-size: 20px; flex-shrink: 0; }
+.info-banner ul { margin: 6px 0 0 0; padding-left: 18px; }
+.info-banner li { margin-bottom: 3px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>📅 CIA & Retest Dates</h2>
+    <p>Manage exam dates, retest dates, and application windows for each CIA.</p>
+  </div>
+  <button onclick="openModal('addCIAModal')" class="btn btn-primary">+ Add CIA Date</button>
+</div>
+
+<!-- Info Banner -->
+<div class="info-banner">
+  <span class="info-icon">ℹ️</span>
+  <div>
+    <strong style="color:#1a237e;">How the Application Window Works</strong>
+    <ul>
+      <li>The window <strong>automatically closes</strong> when the <em>Application Deadline</em> date passes — no manual action needed.</li>
+      <li>After deadline, use <strong>"Set & Open"</strong> to set a new deadline date and re-open the window for late applicants.</li>
+      <li>Use <strong>Open / Close</strong> button to manually override at any time.</li>
+      <li>Only <strong>students who have NOT yet applied</strong> can submit when the window is open.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>All CIA Dates ({{ cia_dates|length }})</h3>
+  </div>
+  {% if cia_dates %}
+  <div style="padding: 16px;">
+    {% for c in cia_dates %}
+    {% set is_open = c.is_application_open() %}
+    {% set deadline_passed = c.application_end_date and today > c.application_end_date %}
+    <div class="cia-card">
+
+      <!-- ── HEADER: Subject info + CIA badge + window status ── -->
+      <div class="cia-card-header">
+        <div class="cia-subject-info">
+          <div class="cia-badge">
+            <span style="font-size:9px;opacity:0.8;">CIA</span>
+            <span class="cia-badge-num">{{ c.cia_number }}</span>
+          </div>
+          <div>
+            <div class="cia-subject-name">{{ c.subject.subject_name }}</div>
+            <div class="cia-subject-code">{{ c.subject.subject_code }} &nbsp;·&nbsp; Sem {{ c.semester }} &nbsp;·&nbsp; {{ c.academic_year or '—' }}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="window-pill {{ 'open' if is_open else 'closed' }}">
+            <span class="dot"></span>
+            {% if is_open %}
+              ✅ Application Open
+            {% elif deadline_passed and c.application_window_open %}
+              🕐 Deadline Passed — Auto Closed
+            {% else %}
+              🔒 Application Closed
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- ── DATES ROW ── -->
+      <div class="cia-dates-row">
+        <div class="cia-date-cell">
+          <div class="cia-date-label">📝 CIA Exam Date</div>
+          <div class="cia-date-value">{{ c.exam_date.strftime('%d %b %Y') }}</div>
+        </div>
+        <div class="cia-date-cell">
+          <div class="cia-date-label">🔄 Retest Date</div>
+          {% if c.retest_date %}
+            <div class="cia-date-value green">{{ c.retest_date.strftime('%d %b %Y') }}</div>
+          {% else %}
+            <div class="cia-date-value muted">Not set</div>
+          {% endif %}
+        </div>
+        <div class="cia-date-cell">
+          <div class="cia-date-label">🗓️ Application Deadline</div>
+          {% if c.application_end_date %}
+            <div class="cia-date-value {{ 'red' if deadline_passed else 'orange' }}">
+              {{ c.application_end_date.strftime('%d %b %Y') }}
+            </div>
+            {% if deadline_passed %}
+              <div class="auto-note">⚡ Auto-closed after this date</div>
+            {% endif %}
+          {% else %}
+            <div class="cia-date-value muted">No deadline set</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- ── ACTIONS ROW ── -->
+      <div class="cia-actions-row">
+
+        <!-- Toggle open/close -->
+        <div class="cia-action-group">
+          <span class="cia-action-label">Window:</span>
+          <form method="POST" action="{{ url_for('admin.toggle_retest_window', cid=c.id) }}" style="display:inline;">
+            <button type="submit"
+              class="btn btn-sm {{ 'btn-danger' if is_open else 'btn-success' }}"
+              onclick="return confirm('{{ 'Close' if is_open else 'Open' }} retest window for {{ c.subject.subject_name }} CIA {{ c.cia_number }}?')"
+              title="{{ 'Close window — students cannot apply' if is_open else 'Open window — students can apply' }}">
+              {{ '🔒 Close Window' if is_open else '🔓 Open Window' }}
+            </button>
+          </form>
+        </div>
+
+        <!-- Set new deadline and open -->
+        <div class="cia-action-group">
+          <span class="cia-action-label">Set New Deadline & Open:</span>
+          <form method="POST" action="{{ url_for('admin.set_retest_window', cid=c.id) }}" class="reopen-group">
+            <input type="date" name="open_until_date"
+                   min="{{ today.strftime('%Y-%m-%d') }}"
+                   title="Pick a new deadline date — portal opens immediately"
+                   placeholder="dd-mm-yyyy">
+            <button type="submit" class="btn btn-primary btn-sm"
+                    title="Set this date as deadline and open the window now">
+              📅 Set & Open
+            </button>
+          </form>
+        </div>
+
+        <!-- Edit / Delete -->
+        <div class="cia-action-group">
+          <button onclick="openEditCIA({{ c.id }},'{{ c.exam_date.strftime('%Y-%m-%d') }}','{{ c.retest_date.strftime('%Y-%m-%d') if c.retest_date else '' }}','{{ c.application_end_date.strftime('%Y-%m-%d') if c.application_end_date else '' }}','{{ c.academic_year or '' }}')"
+                  class="btn btn-outline btn-sm">✏️ Edit</button>
+          <form method="POST" action="{{ url_for('admin.delete_cia_date', cid=c.id) }}"
+                onsubmit="return confirm('Delete CIA {{ c.cia_number }} for {{ c.subject.subject_name }}? This cannot be undone.');" style="display:inline;">
+            <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+          </form>
+        </div>
+      </div>
+
+    </div><!-- /cia-card -->
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:60px;">
+    <div class="icon">📅</div>
+    <h4>No CIA Dates Added Yet</h4>
+    <p style="color:#9ca3af;">Click "+ Add CIA Date" to get started.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── ADD MODAL ── -->
+<div class="modal-overlay" id="addCIAModal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h3>➕ Add CIA Date</h3>
+      <span class="modal-close" onclick="closeModal('addCIAModal')">✕</span>
+    </div>
+    <form method="POST" action="{{ url_for('admin.add_cia_date') }}">
+      <div class="grid grid-2" style="gap:14px;">
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Subject *</label>
+          <select name="subject_id" class="form-control" required>
+            <option value="">-- Select Subject --</option>
+            {% for s in subjects %}<option value="{{ s.id }}">{{ s.subject_name }} ({{ s.subject_code }}) — Sem {{ s.semester }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Semester *</label>
+          <select name="semester" class="form-control" required>
+            {% for i in range(1,9) %}<option value="{{ i }}">Semester {{ i }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CIA Number *</label>
+          <select name="cia_number" class="form-control" required>
+            <option value="1">CIA - 1</option>
+            <option value="2">CIA - 2</option>
+            <option value="3">CIA - 3 (Model)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CIA Exam Date *</label>
+          <input type="date" name="exam_date" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Retest Date</label>
+          <input type="date" name="retest_date" class="form-control">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Application Deadline <span style="color:#e65100;">*</span></label>
+          <input type="date" name="application_end_date" class="form-control">
+          <div style="font-size:11px;color:#e65100;margin-top:5px;">
+            ⚡ The portal window auto-closes after this date. You can re-open it manually anytime.
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Academic Year</label>
+          <input type="text" name="academic_year" class="form-control" placeholder="e.g. 2025-26">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" onclick="closeModal('addCIAModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">✅ Add CIA Date</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── EDIT MODAL ── -->
+<div class="modal-overlay" id="editCIAModal">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h3>✏️ Edit CIA Date</h3>
+      <span class="modal-close" onclick="closeModal('editCIAModal')">✕</span>
+    </div>
+    <form method="POST" id="editCIAForm">
+      <div class="form-group">
+        <label class="form-label">CIA Exam Date *</label>
+        <input type="date" name="exam_date" id="editExamDate" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Retest Date</label>
+        <input type="date" name="retest_date" id="editRetestDate" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Application Deadline <span style="color:#e65100;">🔴</span></label>
+        <input type="date" name="application_end_date" id="editEndDate" class="form-control">
+        <div style="font-size:11px;color:#e65100;margin-top:4px;">
+          ⚡ Portal auto-closes after this date. Students cannot apply after deadline.
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Academic Year</label>
+        <input type="text" name="academic_year" id="editAcYear" class="form-control" placeholder="e.g. 2025-26">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" onclick="closeModal('editCIAModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openEditCIA(id, examDate, retestDate, endDate, acYear) {
+  document.getElementById('editExamDate').value   = examDate;
+  document.getElementById('editRetestDate').value = retestDate;
+  document.getElementById('editEndDate').value    = endDate;
+  document.getElementById('editAcYear').value     = acYear;
+  document.getElementById('editCIAForm').action   = `/admin/cia-dates/edit/${id}`;
+  openModal('editCIAModal');
+}
+</script>
+{% endblock %}

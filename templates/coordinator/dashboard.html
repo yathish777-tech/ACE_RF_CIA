@@ -1,0 +1,156 @@
+{% extends "dashboard_base.html" %}
+{% from "macros.html" import status_badge, type_badge %}
+{% block title %}Coordinator Dashboard{% endblock %}
+{% block page_title %}Department Coordinator Dashboard{% endblock %}
+
+{% block sidebar_nav %}
+<a href="{{ url_for('coordinator.dashboard') }}" class="nav-item active">
+  <span class="nav-icon">🏠</span> Dashboard
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Welcome, {{ current_user.name }}! 🎓</h2>
+    <p>Department Coordinator — review LATE-submission applications before HOD final approval.</p>
+  </div>
+</div>
+
+<div style="padding:12px 16px;background:#fff3e0;border-radius:10px;border-left:4px solid #e65100;margin-bottom:18px;font-size:13px;color:#374151;">
+  <strong style="color:#e65100;">📋 Your Role (LATE submissions only):</strong>
+  Staff ✅ → Tutor ✅ → <strong>You (Coordinator)</strong> → HOD (Final)
+</div>
+
+<!-- CIA Deadlines -->
+{% if upcoming_dates %}
+<div class="card mb-4" style="margin-bottom:18px;border-left:4px solid #f59e0b;">
+  <div class="card-header" style="background:#fffbeb;"><h3 style="color:#92400e;">📅 CIA Application Deadlines</h3></div>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>Subject</th><th>CIA</th><th>Exam Date</th><th>Retest Date</th><th>Submission Deadline</th></tr></thead>
+      <tbody>
+        {% for cd in upcoming_dates %}
+        <tr>
+          <td><strong>{{ cd.subject.subject_name }}</strong></td>
+          <td><span class="badge badge-primary">CIA {{ cd.cia_number }}</span></td>
+          <td>{{ cd.exam_date.strftime('%d %b %Y') }}</td>
+          <td>{{ cd.retest_date.strftime('%d %b %Y') if cd.retest_date else '—' }}</td>
+          <td><strong style="color:#b45309;">{{ cd.application_end_date.strftime('%d %b %Y') }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="stats-grid">
+  <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-info"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total Reviewed</div></div></div>
+  <div class="stat-card orange"><div class="stat-icon">⏳</div><div class="stat-info"><div class="stat-value">{{ stats.pending }}</div><div class="stat-label">Pending</div></div></div>
+  <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-info"><div class="stat-value">{{ stats.approved }}</div><div class="stat-label">Forwarded to HOD</div></div></div>
+  <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-info"><div class="stat-value">{{ stats.rejected }}</div><div class="stat-label">Rejected</div></div></div>
+</div>
+
+<!-- Pending -->
+<div class="card mb-4" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>⏳ Pending LATE Applications ({{ pending|length }})</h3>
+    {% if pending %}<span class="badge badge-warning">Action Required</span>{% endif %}
+  </div>
+  {% if pending %}
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>CIA Date</th><th>Submitted On</th><th>Reason</th><th>Staff</th><th>Tutor</th><th>Attachment</th><th>Action</th></tr></thead>
+      <tbody>
+        {% for app in pending %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td><div class="fw-bold" style="font-size:13px;">{{ app.subject.subject_name }}</div><div class="text-muted">Sem {{ app.semester }}</div></td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td style="font-size:12px;">{{ app.cia_date.strftime('%d %b %Y') }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ app.submitted_at.strftime('%d %b %Y') }}</td>
+          <td style="font-size:12px;">{{ app.reason_type.replace('_',' ').title() }}</td>
+          <td>
+            {{ status_badge(app.staff_status) }}
+            <div style="font-size:10px;color:#6b7280;margin-top:2px;">{{ app.staff.name }}</div>
+          </td>
+          <td>
+            {{ status_badge(app.tutor_status) }}
+            {% if app.tutor %}
+            <div style="font-size:10px;color:#6b7280;margin-top:2px;">{{ app.tutor.name }}</div>
+            {% endif %}
+          </td>
+          <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎 View</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td><button onclick="openActionModal({{ app.id }}, '{{ app.student_name }}')" class="btn btn-primary btn-sm">Review</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:40px;"><div class="icon">✅</div><h4>All Clear!</h4><p>No pending applications.</p></div>
+  {% endif %}
+</div>
+
+<!-- Reviewed -->
+<div class="card">
+  <div class="card-header"><h3>📋 Reviewed Applications</h3></div>
+  {% if reviewed %}
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Submitted On</th><th>My Decision</th><th>Remark</th><th>HOD Final</th></tr></thead>
+      <tbody>
+        {% for app in reviewed %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td>{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td style="font-size:12px;color:#6b7280;">{{ app.submitted_at.strftime('%d %b %Y') }}</td>
+          <td>{{ status_badge(app.coordinator_status) }}</td>
+          <td style="font-size:12px;">{{ app.coordinator_remark or '—' }}</td>
+          <td>{{ status_badge(app.final_status) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:30px;"><p>No reviewed applications yet.</p></div>
+  {% endif %}
+</div>
+
+<div class="modal-overlay" id="actionModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Coordinator Review</h3>
+      <span class="modal-close" onclick="closeModal('actionModal')">✕</span>
+    </div>
+    <p style="color:#6b7280;font-size:14px;margin-bottom:4px;">Student: <strong id="modalStudentName"></strong></p>
+    <p style="font-size:13px;color:#e65100;margin-bottom:16px;">⚠️ LATE submission — approving will forward to HOD for final decision.</p>
+    <form method="POST" id="actionForm">
+      <div class="form-group">
+        <label class="form-label">Coordinator Remark</label>
+        <textarea name="remark" class="form-control" rows="3" placeholder="Add your remark..."></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" onclick="closeModal('actionModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" name="action" value="reject" class="btn btn-danger">❌ Reject</button>
+        <button type="submit" name="action" value="approve" class="btn btn-success">✅ Approve → HOD</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openActionModal(appId, studentName) {
+  document.getElementById('modalStudentName').textContent = studentName;
+  document.getElementById('actionForm').action = `/coordinator/action/${appId}`;
+  openModal('actionModal');
+}
+</script>
+{% endblock %}

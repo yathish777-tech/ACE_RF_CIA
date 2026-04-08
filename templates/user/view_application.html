@@ -1,0 +1,147 @@
+{% extends "dashboard_base.html" %}
+{% from "macros.html" import status_badge, type_badge %}
+{% block title %}Application Details{% endblock %}
+{% block page_title %}Application Details{% endblock %}
+
+{% block sidebar_nav %}
+<a href="{{ url_for('user.dashboard') }}" class="nav-item">
+  <span class="nav-icon">🏠</span> Dashboard
+</a>
+<a href="{{ url_for('user.apply') }}" class="nav-item">
+  <span class="nav-icon">➕</span> Apply for Retest
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Application #{{ app.id }}</h2>
+    <p>Submitted on {{ app.submitted_at.strftime('%d %B %Y at %I:%M %p') }}</p>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    {{ type_badge(app.submission_type) }}
+    {{ status_badge(app.final_status) }}
+    <a href="{{ url_for('user.dashboard') }}" class="btn btn-outline btn-sm">← Back</a>
+  </div>
+</div>
+
+<div class="grid grid-2" style="gap:24px;">
+  <!-- Left Column -->
+  <div>
+    <div class="card mb-4" style="margin-bottom:20px;">
+      <div class="card-header"><h3>👤 Student Information</h3></div>
+      <div class="card-body">
+        <table style="width:100%;">
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:140px;">Register No.</td><td style="padding:8px 0;font-weight:700;">{{ app.register_number }}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Name</td><td style="padding:8px 0;font-weight:600;">{{ app.student_name }}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Email</td><td style="padding:8px 0;">{{ app.student_email }}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card mb-4" style="margin-bottom:20px;">
+      <div class="card-header"><h3>📚 Exam Details</h3></div>
+      <div class="card-body">
+        <table style="width:100%;">
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:140px;">Subject</td><td style="padding:8px 0;font-weight:700;">{{ app.subject.subject_name }}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Subject Code</td><td style="padding:8px 0;">{{ app.subject.subject_code }}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Semester</td><td style="padding:8px 0;">Semester {{ app.semester }}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">CIA Number</td><td style="padding:8px 0;"><span class="badge badge-primary">CIA - {{ app.cia_number }}</span></td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">CIA Date</td><td style="padding:8px 0;">{{ app.cia_date.strftime('%d %B %Y') }}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Reason</td><td style="padding:8px 0;">{{ app.reason_type.replace('_',' ').title() }}{% if app.reason_detail %} — {{ app.reason_detail }}{% endif %}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Approval Timeline -->
+  <div>
+    <div class="card">
+      <div class="card-header"><h3>🔄 Approval Status</h3></div>
+      <div class="card-body">
+        <div class="timeline">
+          <!-- Subject Staff -->
+          <div class="timeline-item">
+            <div class="timeline-dot {{ app.staff_status }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">
+                📚 Subject Staff — {{ status_badge(app.staff_status) }}
+              </div>
+              {% if app.staff %}
+              <div class="timeline-meta">{{ app.staff.name }}</div>
+              {% endif %}
+              {% if app.staff_remark %}
+              <div style="margin-top:6px;font-size:13px;color:#374151;background:#f8f9ff;padding:8px 10px;border-radius:6px;">💬 {{ app.staff_remark }}</div>
+              {% endif %}
+              {% if app.staff_action_time %}
+              <div class="timeline-meta">{{ app.staff_action_time.strftime('%d %b %Y, %I:%M %p') }}</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Tutor -->
+          <div class="timeline-item">
+            <div class="timeline-dot {{ app.tutor_status if app.staff_status == 'approved' else 'waiting' }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">
+                👨‍🏫 Tutor — {{ status_badge(app.tutor_status) }}
+              </div>
+              {% if app.tutor %}<div class="timeline-meta">{{ app.tutor.name }}</div>{% endif %}
+              {% if app.tutor_remark %}<div style="margin-top:6px;font-size:13px;color:#374151;background:#f8f9ff;padding:8px 10px;border-radius:6px;">💬 {{ app.tutor_remark }}</div>{% endif %}
+              {% if app.tutor_action_time %}<div class="timeline-meta">{{ app.tutor_action_time.strftime('%d %b %Y, %I:%M %p') }}</div>{% endif %}
+            </div>
+          </div>
+
+          {% if app.submission_type == 'pre' %}
+          <div class="timeline-item">
+            <div class="timeline-dot {{ app.hod_status if app.tutor_status == 'approved' else 'waiting' }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">🏛️ HOD — {{ status_badge(app.hod_status) }}</div>
+              {% if app.hod_remark %}<div style="margin-top:6px;font-size:13px;color:#374151;background:#f8f9ff;padding:8px 10px;border-radius:6px;">💬 {{ app.hod_remark }}</div>{% endif %}
+              {% if app.hod_action_time %}<div class="timeline-meta">{{ app.hod_action_time.strftime('%d %b %Y, %I:%M %p') }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot {{ 'approved' if app.final_status == 'approved' else ('rejected' if app.final_status == 'rejected' else 'waiting') }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">✅ Final Decision — {{ status_badge(app.final_status) }}</div>
+            </div>
+          </div>
+          {% else %}
+          <div class="timeline-item">
+            <div class="timeline-dot {{ app.coordinator_status if app.tutor_status == 'approved' else 'waiting' }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">🎓 Coordinator (Review) — {{ status_badge(app.coordinator_status) }}</div>
+              {% if app.coordinator_remark %}<div style="margin-top:6px;font-size:13px;color:#374151;background:#f8f9ff;padding:8px 10px;border-radius:6px;">💬 {{ app.coordinator_remark }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot {{ app.hod_status if app.coordinator_status == 'approved' else 'waiting' }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">🏛️ HOD — {{ status_badge(app.hod_status) }}</div>
+              {% if app.hod_remark %}<div style="margin-top:6px;font-size:13px;color:#374151;background:#f8f9ff;padding:8px 10px;border-radius:6px;">💬 {{ app.hod_remark }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot {{ 'approved' if app.final_status == 'approved' else ('rejected' if app.final_status == 'rejected' else 'waiting') }}"></div>
+            <div class="timeline-content">
+              <div class="timeline-title">✅ Final Decision — {{ status_badge(app.final_status) }}</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if app.final_status == 'approved' %}
+        <div class="alert alert-success" style="margin-top:16px;">
+          🎉 Your application has been fully approved! Please attend the retest on the scheduled date.
+        </div>
+        {% elif app.final_status == 'rejected' %}
+        <div class="alert alert-danger" style="margin-top:16px;">
+          ❌ Your application was rejected. Please contact your department for further assistance.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

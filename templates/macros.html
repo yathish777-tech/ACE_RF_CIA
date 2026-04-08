@@ -1,0 +1,36 @@
+{% macro approval_chain(app) %}
+<div class="approval-chain">
+  {% set stages = [
+    ('📚', 'Staff', app.staff_status),
+    ('👨‍🏫', 'Tutor', app.tutor_status),
+  ] %}
+  {% if app.submission_type == 'pre' %}
+    {% set stages = stages + [('🏛️', 'HOD', app.hod_status), ('🎓', 'Coordinator', app.coordinator_status)] %}
+  {% else %}
+    {% set stages = stages + [('🎓', 'Coordinator', app.coordinator_status), ('🏛️', 'HOD', app.hod_status), ('🎓', 'Coord(Final)', app.coordinator_status)] %}
+  {% endif %}
+  {% for icon, label, status in stages %}
+  <div class="chain-step">
+    <div class="chain-node">
+      <div class="chain-icon {{ status }}">{{ icon }}</div>
+      <span class="chain-label">{{ label }}</span>
+    </div>
+    {% if not loop.last %}<div class="chain-arrow"></div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro status_badge(status) %}
+  {% if status == 'approved' %}<span class="badge badge-success">✅ Approved</span>
+  {% elif status == 'rejected' %}<span class="badge badge-danger">❌ Rejected</span>
+  {% elif status == 'pending' %}<span class="badge badge-warning">⏳ Pending</span>
+  {% else %}<span class="badge badge-secondary">{{ status }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro type_badge(stype) %}
+  {% if stype == 'pre' %}<span class="badge badge-info">📋 Pre-Submission</span>
+  {% else %}<span class="badge badge-warning">⏰ Late Submission</span>
+  {% endif %}
+{% endmacro %}

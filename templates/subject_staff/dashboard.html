@@ -1,0 +1,371 @@
+{% extends "dashboard_base.html" %}
+{% from "macros.html" import status_badge, type_badge %}
+{% block title %}Staff Dashboard{% endblock %}
+{% block page_title %}Subject Staff Dashboard{% endblock %}
+
+{% block sidebar_nav %}
+<a href="{{ url_for('staff.dashboard') }}" class="nav-item active"><span class="nav-icon">🏠</span> Dashboard</a>
+{% if current_user.secondary_role == 'tutor' or current_user.role == 'tutor' %}
+<a href="{{ url_for('tutor.dashboard') }}" class="nav-item"><span class="nav-icon">👨‍🏫</span> Tutor Dashboard</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Welcome, {{ current_user.name }}! 📚</h2>
+    <p>Role: <strong>{{ current_user.display_role() }}</strong> | Review applications & manage absentee lists.</p>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-info"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total</div></div></div>
+  <div class="stat-card orange"><div class="stat-icon">⏳</div><div class="stat-info"><div class="stat-value">{{ stats.pending }}</div><div class="stat-label">Pending</div></div></div>
+  <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-info"><div class="stat-value">{{ stats.approved }}</div><div class="stat-label">Approved</div></div></div>
+  <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-info"><div class="stat-value">{{ stats.rejected }}</div><div class="stat-label">Rejected</div></div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     ABSENTEE LIST MANAGEMENT
+═══════════════════════════════════════════════════════════ -->
+<div class="card mb-4" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>📤 Absentee List Management (Per Subject Per CIA)</h3>
+    <button onclick="openModal('uploadModal')" class="btn btn-primary btn-sm">+ Upload / Update List</button>
+  </div>
+  <div class="card-body">
+    <div style="padding:10px 14px;background:#e8eaf6;border-radius:8px;font-size:12px;color:#374151;margin-bottom:14px;border-left:3px solid #1a237e;">
+      <strong style="color:#1a237e;">📋 File Format:</strong> Your Excel/CSV must have columns:
+      <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">reg_no</code> and
+      <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">name</code>
+      (or <code>register_number</code> / <code>student_name</code>). Or use the manual table below.
+    </div>
+
+    {% if absence_records %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#e8eaf6;">
+            <th style="padding:9px 12px;color:#1a237e;">#</th>
+            <th style="padding:9px 12px;color:#1a237e;">Subject</th>
+            <th style="padding:9px 12px;color:#1a237e;">CIA</th>
+            <th style="padding:9px 12px;color:#1a237e;">Semester</th>
+            <th style="padding:9px 12px;color:#1a237e;">Students</th>
+            <th style="padding:9px 12px;color:#1a237e;">Uploaded</th>
+            <th style="padding:9px 12px;color:#1a237e;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rec in absence_records %}
+          {% set students = rec.get_students() %}
+          <tr style="border-bottom:0.5px solid var(--color-border-tertiary);">
+            <td style="padding:9px 12px;">{{ loop.index }}</td>
+            <td style="padding:9px 12px;">
+              <div class="fw-bold">{{ rec.subject.subject_name }}</div>
+              <div class="text-muted">{{ rec.subject.subject_code }}</div>
+            </td>
+            <td style="padding:9px 12px;"><span class="badge badge-primary">CIA {{ rec.cia_number }}</span></td>
+            <td style="padding:9px 12px;">{% if rec.semester %}Sem {{ rec.semester }}{% else %}—{% endif %}</td>
+            <td style="padding:9px 12px;">
+              <span class="badge badge-info">{{ students|length }} students</span>
+              {% if students %}
+              <div style="margin-top:4px;font-size:11px;color:#6b7280;">
+                {% for s in students[:2] %}{{ s.reg_no or s.register_number or s.register_no or s.reg }} — {{ s.name or s.student_name }}<br>{% endfor %}
+                {% if students|length > 2 %}<span style="color:#1a237e;font-weight:700;">+ {{ students|length - 2 }} more</span>{% endif %}
+              </div>
+              {% endif %}
+            </td>
+            <td style="padding:9px 12px;font-size:12px;color:#6b7280;">{{ rec.uploaded_at.strftime('%d %b %Y') }}</td>
+            <td style="padding:9px 12px;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button onclick="editRecord({{ rec.id }}, {{ rec.subject_id }}, {{ rec.cia_number }}, {{ rec.semester or 1 }})"
+                        class="btn btn-outline btn-sm">✏️ Edit</button>
+                <button onclick="viewAllStudents({{ rec.id }}, '{{ rec.subject.subject_name }} CIA {{ rec.cia_number }}')"
+                        class="btn btn-primary btn-sm">👁 View</button>
+                <form method="POST" action="{{ url_for('staff.delete_absentee_record', record_id=rec.id) }}"
+                      onsubmit="return confirm('Delete this absentee record?');" style="display:inline;">
+                  <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:30px;">
+      <div class="icon">📭</div>
+      <h4>No Absentee Lists Yet</h4>
+      <p>Click "+ Upload / Update List" to add absentee students.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<!-- ═══════════════════════════════════════════════════════════
+     PENDING APPLICATIONS
+═══════════════════════════════════════════════════════════ -->
+<div class="card mb-4" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>⏳ Pending Applications ({{ pending|length }})</h3>
+    {% if pending %}<span class="badge badge-warning">Action Required</span>{% endif %}
+  </div>
+  {% if pending %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Date</th><th>Reason</th><th>Attachment</th><th>Type</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        {% for app in pending %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td><div class="fw-bold" style="font-size:13px;">{{ app.subject.subject_name }}</div><div class="text-muted">Sem {{ app.semester }}</div></td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td style="font-size:12px;">{{ app.cia_date.strftime('%d %b %Y') }}</td>
+          <td style="font-size:12px;">{{ app.reason_type.replace('_',' ').title() }}</td>
+          <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎 View</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td><button onclick="openActionModal({{ app.id }},'{{ app.student_name }}')" class="btn btn-primary btn-sm">Review</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:32px;"><div class="icon">✅</div><h4>No Pending</h4><p>All clear!</p></div>
+  {% endif %}
+</div>
+
+<!-- REVIEWED -->
+<div class="card">
+  <div class="card-header"><h3>📋 Reviewed Applications</h3></div>
+  {% if reviewed %}
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Attachment</th><th>My Decision</th><th>Remark</th><th>Date</th></tr></thead>
+      <tbody>
+        {% for app in reviewed %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ app.student_name }}</div><div class="text-muted">{{ app.register_number }}</div></td>
+          <td>{{ app.subject.subject_name }}</td>
+          <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
+          <td>{{ type_badge(app.submission_type) }}</td>
+          <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎</a>{% else %}—{% endif %}</td>
+          <td>{{ status_badge(app.staff_status) }}</td>
+          <td style="font-size:12px;">{{ app.staff_remark or '—' }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ app.staff_action_time.strftime('%d %b %Y') if app.staff_action_time else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty-state" style="padding:24px;"><p>No reviewed applications yet.</p></div>{% endif %}
+</div>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Upload / Edit Absentee Modal -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3 id="uploadModalTitle">📤 Upload Absentee List</h3>
+      <span class="modal-close" onclick="closeModal('uploadModal')">✕</span>
+    </div>
+    <form method="POST" action="{{ url_for('staff.upload_absentees') }}" enctype="multipart/form-data" id="uploadForm">
+      <input type="hidden" name="record_id" id="editRecordId" value="">
+
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Subject <span class="required">*</span></label>
+          <select name="subject_id" class="form-control" required id="uploadSubjectId">
+            <option value="">-- Select --</option>
+            {% for s in my_subjects %}<option value="{{ s.id }}">{{ s.subject_name }} ({{ s.subject_code }})</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">CIA No. <span class="required">*</span></label>
+          <select name="cia_number" class="form-control" required id="uploadCIANum">
+            <option value="1">CIA 1</option><option value="2">CIA 2</option><option value="3">CIA 3</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Semester</label>
+          <select name="semester" class="form-control" id="uploadSemester">
+            {% for i in range(1,9) %}<option value="{{ i }}">Sem {{ i }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- File Upload -->
+      <div style="padding:12px 14px;background:var(--color-background-secondary);border-radius:8px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:6px;">📁 Upload Excel/CSV File (Optional)</div>
+        <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">
+          Columns needed: <code>reg_no</code> + <code>name</code>  (or <code>register_number</code> + <code>student_name</code>)
+        </div>
+        <input type="file" name="absentee_file" class="form-control" accept=".xlsx,.xls,.csv,.pdf,.jpg,.png"
+               onchange="showFileInfo(this)">
+        <div id="fileInfoMsg" style="font-size:11px;color:#2e7d32;margin-top:4px;display:none;"></div>
+      </div>
+
+      <!-- Manual Entry Table -->
+      <div style="padding:12px 14px;background:var(--color-background-secondary);border-radius:8px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:12px;font-weight:700;color:#1a237e;">✍️ Manual Entry (Add rows one by one)</div>
+          <button type="button" onclick="addRow()" class="btn btn-outline btn-sm">+ Add Row</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;" id="studentTable">
+            <thead>
+              <tr style="background:#e8eaf6;">
+                <th style="padding:7px 10px;color:#1a237e;">#</th>
+                <th style="padding:7px 10px;color:#1a237e;">Register No.</th>
+                <th style="padding:7px 10px;color:#1a237e;">Student Name</th>
+                <th style="padding:7px 10px;color:#1a237e;">Remove</th>
+              </tr>
+            </thead>
+            <tbody id="studentTableBody">
+              <!-- rows injected by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeModal('uploadModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save Absentee List</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- View Students Modal -->
+<div class="modal-overlay" id="viewStudentsModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h3 id="viewStudentsTitle">Students</h3>
+      <span class="modal-close" onclick="closeModal('viewStudentsModal')">✕</span>
+    </div>
+    <div id="viewStudentsBody" style="max-height:420px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- Action Modal -->
+<div class="modal-overlay" id="actionModal">
+  <div class="modal">
+    <div class="modal-header"><h3>Review Application</h3><span class="modal-close" onclick="closeModal('actionModal')">✕</span></div>
+    <p style="color:#6b7280;font-size:14px;margin-bottom:14px;">Student: <strong id="modalStudentName"></strong></p>
+    <form method="POST" id="actionForm">
+      <div class="form-group">
+        <label class="form-label">Remark</label>
+        <textarea name="remark" class="form-control" rows="3" placeholder="Add your remark (optional)..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" onclick="closeModal('actionModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" name="action" value="reject" class="btn btn-danger">❌ Reject</button>
+        <button type="submit" name="action" value="approve" class="btn btn-success">✅ Approve</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Action modal ─────────────────────────────────────────
+function openActionModal(appId, studentName) {
+  document.getElementById('modalStudentName').textContent = studentName;
+  document.getElementById('actionForm').action = `/staff/action/${appId}`;
+  openModal('actionModal');
+}
+
+// ── Absentee upload modal ────────────────────────────────
+let rowCount = 0;
+function addRow(regNo='', name='') {
+  rowCount++;
+  const tbody = document.getElementById('studentTableBody');
+  const tr = document.createElement('tr');
+  tr.style.borderBottom = '0.5px solid var(--color-border-tertiary)';
+  tr.innerHTML = `
+    <td style="padding:6px 10px;color:#9ca3af;">${rowCount}</td>
+    <td style="padding:4px 8px;"><input type="text" name="reg_no[]" value="${regNo}"
+        class="form-control" style="padding:6px 8px;font-size:12px;" placeholder="e.g. 22CSB001"></td>
+    <td style="padding:4px 8px;"><input type="text" name="name[]" value="${name}"
+        class="form-control" style="padding:6px 8px;font-size:12px;" placeholder="Student name"></td>
+    <td style="padding:6px 10px;"><button type="button" onclick="this.closest('tr').remove()"
+        class="btn btn-danger btn-sm" style="padding:3px 8px;">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function editRecord(recordId, subjectId, ciaNum, semester) {
+  document.getElementById('uploadModalTitle').textContent = '✏️ Edit Absentee List';
+  document.getElementById('uploadSubjectId').value = subjectId;
+  document.getElementById('uploadCIANum').value    = ciaNum;
+  document.getElementById('uploadSemester').value  = semester;
+  document.getElementById('studentTableBody').innerHTML = '';
+  rowCount = 0;
+  // Load existing students
+  fetch(`/staff/absentees/${recordId}/get_students`)
+    .then(r => r.json())
+    .then(data => {
+      (data.students || []).forEach(s => addRow(
+        s.reg_no || s.register_number || s.register_no || s.reg || '',
+        s.name || s.student_name || ''
+      ));
+      if ((data.students || []).length === 0) addRow();
+    });
+  openModal('uploadModal');
+}
+
+function showFileInfo(input) {
+  const d = document.getElementById('fileInfoMsg');
+  if (input.files.length > 0) {
+    d.textContent = '✅ ' + input.files[0].name;
+    d.style.display = 'block';
+  }
+}
+
+// Pre-add 3 empty rows when opening fresh
+document.querySelector('[onclick="openModal(\'uploadModal\')"]').addEventListener('click', function() {
+  document.getElementById('uploadModalTitle').textContent = '📤 Upload Absentee List';
+  document.getElementById('editRecordId').value = '';
+  document.getElementById('studentTableBody').innerHTML = '';
+  rowCount = 0;
+  addRow(); addRow(); addRow();
+});
+
+async function viewAllStudents(recordId, title) {
+  document.getElementById('viewStudentsTitle').textContent = title;
+  document.getElementById('viewStudentsBody').innerHTML = '<p style="text-align:center;padding:20px;color:#9ca3af;">Loading...</p>';
+  openModal('viewStudentsModal');
+  const res  = await fetch(`/staff/absentees/${recordId}/get_students`);
+  const data = await res.json();
+  const students = data.students || [];
+  if (!students.length) {
+    document.getElementById('viewStudentsBody').innerHTML = '<p style="padding:20px;color:#9ca3af;text-align:center;">No student records stored.</p>';
+    return;
+  }
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:#e8eaf6;">
+      <th style="padding:8px 12px;color:#1a237e;">#</th>
+      <th style="padding:8px 12px;color:#1a237e;">Register No.</th>
+      <th style="padding:8px 12px;color:#1a237e;">Student Name</th>
+    </tr></thead><tbody>`;
+  students.forEach((s,i) => {
+    const regNo = s.reg_no || s.register_number || s.register_no || s.reg || '—';
+    const studentName = s.name || s.student_name || '—';
+    html += `<tr style="background:${i%2?'#f8f9ff':'#fff'};border-bottom:0.5px solid #e0e7ff;">
+      <td style="padding:7px 12px;">${i+1}</td>
+      <td style="padding:7px 12px;font-weight:700;font-family:monospace;">${regNo}</td>
+      <td style="padding:7px 12px;">${studentName}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('viewStudentsBody').innerHTML = html;
+}
+
+
+</script>
+{% endblock %}

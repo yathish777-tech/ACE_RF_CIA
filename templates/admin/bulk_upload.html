@@ -1,0 +1,329 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Bulk Upload{% endblock %}
+{% block page_title %}Bulk Data Upload{% endblock %}
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item active"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div><h2>📤 Bulk Data Upload</h2><p>Upload three separate files — Staff, Subjects (with section-staff mapping), and CIA Schedule.</p></div>
+</div>
+
+<!-- HOW MAPPING WORKS -->
+<div class="card" style="margin-bottom:20px;border-top:4px solid #2e7d32;">
+  <div class="card-header" style="background:#e8f5e9;">
+    <h3 style="color:#1b5e20;">🔗 How Backend Mapping Works</h3>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+      <div style="padding:12px;background:#e8eaf6;border-radius:8px;text-align:center;">
+        <div style="font-size:22px;">1️⃣</div>
+        <div style="font-weight:700;color:#1a237e;font-size:12px;margin-top:4px;">Upload Staff</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;">Name, email, role, handling year & section stored in DB</div>
+      </div>
+      <div style="padding:12px;background:#e8f5e9;border-radius:8px;text-align:center;">
+        <div style="font-size:22px;">2️⃣</div>
+        <div style="font-weight:700;color:#2e7d32;font-size:12px;margin-top:4px;">Upload Subjects</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;">Each row = subject + section + SHSN creates a section-staff mapping</div>
+      </div>
+      <div style="padding:12px;background:#fff3e0;border-radius:8px;text-align:center;">
+        <div style="font-size:22px;">3️⃣</div>
+        <div style="font-weight:700;color:#e65100;font-size:12px;margin-top:4px;">Upload CIA Schedule</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;">Exam date, deadline, retest date stored per subject/CIA number</div>
+      </div>
+      <div style="padding:12px;background:#fce4ec;border-radius:8px;text-align:center;">
+        <div style="font-size:22px;">✅</div>
+        <div style="font-weight:700;color:#c62828;font-size:12px;margin-top:4px;">Auto-Assign</div>
+        <div style="font-size:11px;color:#374151;margin-top:4px;">Student picks semester → subjects filter by section → staff auto-assigned</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- THREE UPLOAD CARDS -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
+
+  <!-- UPLOAD 1: STAFF -->
+  <div class="card" style="border-top:4px solid #1a237e;">
+    <div class="card-header" style="background:#e8eaf6;">
+      <h3 style="color:#1a237e;">👥 1. Staff Details</h3>
+    </div>
+    <div class="card-body">
+      <div style="padding:10px 12px;background:#f0f4ff;border-radius:7px;margin-bottom:12px;font-size:11px;color:#374151;border-left:3px solid #1a237e;">
+        <strong style="color:#1a237e;display:block;margin-bottom:4px;">Required Columns:</strong>
+        <code>staff_name</code> &nbsp; <code>staff_email</code> &nbsp; <code>role</code><br>
+        <code>phone</code> &nbsp; <code>handling_year</code> &nbsp; <code>handling_section</code>
+      </div>
+      <div style="overflow-x:auto;margin-bottom:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;">
+          <thead><tr style="background:#1a237e;">
+            <th style="padding:5px;color:#fff;border:1px solid #283593;">staff_name</th>
+            <th style="padding:5px;color:#fff;border:1px solid #283593;">staff_email</th>
+            <th style="padding:5px;color:#fff;border:1px solid #283593;">role</th>
+            <th style="padding:5px;color:#fff;border:1px solid #283593;">handling_year</th>
+            <th style="padding:5px;color:#fff;border:1px solid #283593;">handling_section</th>
+          </tr></thead>
+          <tbody>
+            <tr style="background:#f5f7ff;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">Prof. Kavitha</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">kavitha@ace.edu</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">subject_staff</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">A</td></tr>
+            <tr><td style="padding:4px 5px;border:1px solid #e0e0e0;">Prof. Senthil</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">senthil@ace.edu</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">tutor</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">B</td></tr>
+            <tr style="background:#f5f7ff;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">Dr. Ramesh</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">hod@ace.edu</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">hod</td><td style="padding:4px 5px;border:1px solid #e0e0e0;"></td><td style="padding:4px 5px;border:1px solid #e0e0e0;"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:7px 10px;background:#e8f5e9;border-radius:6px;font-size:10px;color:#1b5e20;margin-bottom:10px;">
+        🔑 Default password: <strong>staff123</strong> &nbsp;|&nbsp; Roles: <code>subject_staff</code> <code>tutor</code> <code>hod</code> <code>coordinator</code>
+      </div>
+      <form method="POST" action="{{ url_for('admin.bulk_upload_staff') }}" enctype="multipart/form-data" id="staffForm">
+        <div class="form-group">
+          <label class="form-label" style="font-size:12px;">Select File (.xlsx / .xls / .csv) <span class="required">*</span></label>
+          <input type="file" name="staff_file" class="form-control" accept=".xlsx,.xls,.csv" required onchange="showInfo(this,'staffInfo')">
+          <div id="staffInfo" style="font-size:11px;color:#2e7d32;margin-top:4px;display:none;"></div>
+        </div>
+        <button type="submit" class="btn btn-primary w-100" id="staffBtn">👥 Upload Staff</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- UPLOAD 2: SUBJECTS -->
+  <div class="card" style="border-top:4px solid #2e7d32;">
+    <div class="card-header" style="background:#e8f5e9;">
+      <h3 style="color:#1b5e20;">📚 2. Subject Details</h3>
+    </div>
+    <div class="card-body">
+      <div style="padding:10px 12px;background:#f1f8f1;border-radius:7px;margin-bottom:12px;font-size:11px;color:#374151;border-left:3px solid #2e7d32;">
+        <strong style="color:#2e7d32;display:block;margin-bottom:4px;">Required Columns:</strong>
+        <code>subject_name</code> &nbsp; <code>subject_code</code> &nbsp; <code>semester</code><br>
+        <code>section</code> &nbsp; <code>shsn</code> (staff email or name)
+        <div style="margin-top:5px;color:#6b7280;font-size:10px;">One row per subject+section combo. Same subject with different sections = multiple rows.</div>
+      </div>
+      <div style="overflow-x:auto;margin-bottom:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;">
+          <thead><tr style="background:#2e7d32;">
+            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">subject_name</th>
+            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">subject_code</th>
+            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">semester</th>
+            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">section</th>
+            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">shsn</th>
+          </tr></thead>
+          <tbody>
+            <tr style="background:#f5fff5;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">Data Structures</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">A</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">kavitha@ace.edu</td></tr>
+            <tr><td style="padding:4px 5px;border:1px solid #e0e0e0;">Data Structures</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">B</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">ravi@ace.edu</td></tr>
+            <tr style="background:#f5fff5;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">Data Structures</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">C</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">priya@ace.edu</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <form method="POST" action="{{ url_for('admin.bulk_upload_subjects') }}" enctype="multipart/form-data" id="subjectForm">
+        <div class="form-group">
+          <label class="form-label" style="font-size:12px;">Select File (.xlsx / .xls / .csv) <span class="required">*</span></label>
+          <input type="file" name="subject_file" class="form-control" accept=".xlsx,.xls,.csv" required onchange="showInfo(this,'subjectInfo')">
+          <div id="subjectInfo" style="font-size:11px;color:#2e7d32;margin-top:4px;display:none;"></div>
+        </div>
+        <button type="submit" class="btn btn-primary w-100" id="subjectBtn" style="background:#2e7d32;">📚 Upload Subjects</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- UPLOAD 3: CIA SCHEDULE -->
+  <div class="card" style="border-top:4px solid #e65100;">
+    <div class="card-header" style="background:#fff3e0;">
+      <h3 style="color:#e65100;">📅 3. CIA Schedule</h3>
+    </div>
+    <div class="card-body">
+      <div style="padding:10px 12px;background:#fff8f0;border-radius:7px;margin-bottom:12px;font-size:11px;color:#374151;border-left:3px solid #e65100;">
+        <strong style="color:#e65100;display:block;margin-bottom:4px;">Required Columns:</strong>
+        <code>subject_code</code> &nbsp; <code>semester</code> &nbsp; <code>cia_number</code><br>
+        <code>cia_exam_date</code> &nbsp; <code>cia_deadline_date</code> &nbsp; <code>cia_retest_date</code>
+        <div style="margin-top:5px;color:#6b7280;font-size:10px;">All dates: YYYY-MM-DD format. One row per subject per CIA number.</div>
+      </div>
+      <div style="overflow-x:auto;margin-bottom:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;">
+          <thead><tr style="background:#e65100;">
+            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">subject_code</th>
+            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">semester</th>
+            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_number</th>
+            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_exam_date</th>
+            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_deadline_date</th>
+            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_retest_date</th>
+          </tr></thead>
+          <tbody>
+            <tr style="background:#fff8f0;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">1</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-09-10</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-09-16</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-09-20</td></tr>
+            <tr><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-11-05</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-11-11</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-11-15</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <form method="POST" action="{{ url_for('admin.bulk_upload_cia') }}" enctype="multipart/form-data" id="ciaForm">
+        <div class="form-group">
+          <label class="form-label" style="font-size:12px;">Select File (.xlsx / .xls / .csv) <span class="required">*</span></label>
+          <input type="file" name="cia_file" class="form-control" accept=".xlsx,.xls,.csv" required onchange="showInfo(this,'ciaInfo')">
+          <div id="ciaInfo" style="font-size:11px;color:#2e7d32;margin-top:4px;display:none;"></div>
+        </div>
+        <button type="submit" class="btn btn-primary w-100" id="ciaBtn" style="background:#e65100;">📅 Upload CIA Schedule</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- PORTAL WINDOW MANAGEMENT -->
+<div class="card mb-4" style="margin-bottom:24px;border-top:4px solid #0277bd;">
+  <div class="card-header" style="background:#e1f5fe;">
+    <h3 style="color:#01579b;">⏰ Portal Window Management</h3>
+    <span class="badge badge-warning">Admin / HOD</span>
+  </div>
+  <div class="card-body">
+    {% if cia_dates %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="background:#e8eaf6;">
+            <th style="padding:9px 12px;text-align:left;color:#1a237e;">Subject</th>
+            <th style="padding:9px 12px;color:#1a237e;">CIA</th>
+            <th style="padding:9px 12px;color:#1a237e;">Exam Date</th>
+            <th style="padding:9px 12px;color:#1a237e;">Retest Date</th>
+            <th style="padding:9px 12px;color:#1a237e;">Deadline</th>
+            <th style="padding:9px 12px;color:#1a237e;">Status</th>
+            <th style="padding:9px 12px;color:#1a237e;">Toggle</th>
+            <th style="padding:9px 12px;color:#1a237e;">Set & Reopen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cia_dates %}
+          <tr style="border-bottom:0.5px solid var(--color-border-tertiary);">
+            <td style="padding:9px 12px;">
+              <div class="fw-bold">{{ c.subject.subject_name }}</div>
+              <div class="text-muted">{{ c.subject.subject_code }} | Sem {{ c.semester }}</div>
+            </td>
+            <td style="padding:9px 12px;text-align:center;"><span class="badge badge-primary">CIA {{ c.cia_number }}</span></td>
+            <td style="padding:9px 12px;font-size:11px;">{{ c.exam_date.strftime('%d %b %Y') }}</td>
+            <td style="padding:9px 12px;font-size:11px;">{{ c.retest_date.strftime('%d %b %Y') if c.retest_date else '—' }}</td>
+            <td style="padding:9px 12px;">
+              {% if c.application_end_date %}<span style="font-weight:700;color:#e65100;font-size:11px;">{{ c.application_end_date.strftime('%d %b %Y') }}</span>
+              {% else %}<span class="text-muted">No deadline</span>{% endif %}
+            </td>
+            <td style="padding:9px 12px;">
+              {% if c.application_window_open %}<span class="badge badge-success">✅ Open</span>
+              {% else %}<span class="badge badge-danger">🔒 Closed</span>{% endif %}
+            </td>
+            <td style="padding:9px 12px;">
+              <form method="POST" action="{{ url_for('admin.toggle_retest_window', cid=c.id) }}" onsubmit="return confirm('{{ 'Close' if c.application_window_open else 'Open' }} portal for {{ c.subject.subject_name }} CIA {{ c.cia_number }}?')">
+                <button type="submit" class="btn btn-sm {{ 'btn-danger' if c.application_window_open else 'btn-success' }}">
+                  {{ '🔒 Close' if c.application_window_open else '🔓 Open' }}
+                </button>
+              </form>
+            </td>
+            <td style="padding:9px 12px;">
+              <form method="POST" action="{{ url_for('admin.set_retest_window', cid=c.id) }}" style="display:flex;gap:5px;align-items:center;">
+                <input type="date" name="open_until_date" class="form-control" style="padding:5px 8px;font-size:11px;width:130px;"
+                       value="{{ c.application_end_date.strftime('%Y-%m-%d') if c.application_end_date else '' }}">
+                <button type="submit" class="btn btn-primary btn-sm">Set</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p style="color:#9ca3af;font-size:13px;">No CIA dates configured. Upload CIA Schedule file first.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Section-Staff Mapping Summary -->
+{% if sss_list %}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header"><h3>🔗 Section-Staff Mappings ({{ sss_list|length }} total)</h3></div>
+  <div style="max-height:300px;overflow-y:auto;">
+    <table>
+      <thead><tr><th>Subject</th><th>Semester</th><th>Section</th><th>Staff</th></tr></thead>
+      <tbody>
+        {% for m in sss_list %}
+        <tr>
+          <td class="fw-bold" style="font-size:12px;">{{ m.subject.subject_name }}<div class="text-muted" style="font-size:10px;">{{ m.subject.subject_code }}</div></td>
+          <td style="font-size:12px;">Sem {{ m.semester }}</td>
+          <td><span class="badge badge-primary">Section {{ m.section }}</span></td>
+          <td style="font-size:12px;">{{ m.staff.name if m.staff else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Current Staff Summary -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+  <div class="card">
+    <div class="card-header"><h3>👥 Staff ({{ staff_list|length }})</h3></div>
+    <div style="max-height:280px;overflow-y:auto;">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Yr/Sec</th></tr></thead>
+        <tbody>
+          {% for s in staff_list %}
+          <tr>
+            <td class="fw-bold" style="font-size:12px;">{{ s.name }}<div class="text-muted" style="font-size:10px;">{{ s.email }}</div></td>
+            <td><span class="badge {% if s.role=='hod' %}badge-warning{% elif s.role=='tutor' %}badge-primary{% elif s.role=='coordinator' %}badge-success{% else %}badge-info{% endif %}" style="font-size:10px;">{{ s.role.replace('_',' ').title() }}</span>
+            {% if s.secondary_role %}<span class="badge badge-secondary" style="font-size:9px;">+{{ s.secondary_role.replace('_',' ').title() }}</span>{% endif %}</td>
+            <td style="font-size:11px;">{{ s.handling_year or '—' }} / {{ s.handling_section or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" style="text-align:center;color:#9ca3af;padding:20px;">No staff added yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3>📅 CIA Schedule ({{ cia_dates|length }})</h3></div>
+    <div style="max-height:280px;overflow-y:auto;">
+      <table>
+        <thead><tr><th>Subject</th><th>Sem</th><th>CIA</th><th>Exam</th><th>Deadline</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for c in cia_dates %}
+          <tr>
+            <td style="font-size:11px;font-weight:700;">{{ c.subject.subject_code }}</td>
+            <td style="font-size:11px;">{{ c.semester }}</td>
+            <td><span class="badge badge-primary" style="font-size:9px;">CIA {{ c.cia_number }}</span></td>
+            <td style="font-size:11px;">{{ c.exam_date.strftime('%d %b %Y') }}</td>
+            <td style="font-size:11px;">{% if c.application_end_date %}<span style="color:#e65100;">{{ c.application_end_date.strftime('%d %b %Y') }}</span>{% else %}—{% endif %}</td>
+            <td><span class="badge {% if c.application_window_open %}badge-success{% else %}badge-danger{% endif %}" style="font-size:9px;">{{ '✅' if c.application_window_open else '🔒' }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px;">No CIA dates yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showInfo(input, divId) {
+  const d = document.getElementById(divId);
+  if (input.files.length > 0) {
+    d.textContent = '✅ ' + input.files[0].name + ' (' + (input.files[0].size/1024).toFixed(1) + ' KB)';
+    d.style.display = 'block';
+  }
+}
+document.getElementById('staffForm').addEventListener('submit', function() {
+  const b = document.getElementById('staffBtn'); b.textContent = '⏳ Uploading Staff...'; b.disabled = true;
+});
+document.getElementById('subjectForm').addEventListener('submit', function() {
+  const b = document.getElementById('subjectBtn'); b.textContent = '⏳ Uploading Subjects...'; b.disabled = true;
+});
+document.getElementById('ciaForm').addEventListener('submit', function() {
+  const b = document.getElementById('ciaBtn'); b.textContent = '⏳ Uploading CIA...'; b.disabled = true;
+});
+</script>
+{% endblock %}

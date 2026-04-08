@@ -1,0 +1,137 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Absentee Records{% endblock %}
+{% block page_title %}Absentee Records{% endblock %}
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item active"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div><h2>🚫 Absentee Records</h2><p>Lists uploaded by subject staff. Download each CIA separately.</p></div>
+</div>
+
+{% macro cia_section(cia_num, records) %}
+<div class="card mb-4" style="margin-bottom:24px;border-top:4px solid {{ '#1a237e' if cia_num==1 else ('#0277bd' if cia_num==2 else '#00695c') }};">
+  <div class="card-header" style="background:{{ '#e8eaf6' if cia_num==1 else ('#e1f5fe' if cia_num==2 else '#e0f2f1') }};">
+    <h3 style="color:{{ '#1a237e' if cia_num==1 else ('#01579b' if cia_num==2 else '#004d40') }};">
+      📋 CIA {{ cia_num }} Absentees ({{ records|length }} uploads)
+    </h3>
+    <div style="display:flex;gap:8px;">
+      <a href="{{ url_for('admin.download_absentees_cia', cia_num=cia_num, fmt='excel') }}"
+         class="btn btn-success btn-sm">📥 Download Excel</a>
+      <a href="{{ url_for('admin.download_absentees_cia', cia_num=cia_num, fmt='pdf') }}"
+         class="btn btn-danger btn-sm">📄 Download PDF</a>
+    </div>
+  </div>
+  {% if records %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Subject</th><th>Semester</th><th>Students</th><th>Uploaded By</th><th>Date</th><th>View Students</th></tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        {% set students = r.get_students() %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>
+            <div class="fw-bold">{{ r.subject.subject_name }}</div>
+            <div class="text-muted">{{ r.subject.subject_code }}</div>
+          </td>
+          <td>{% if r.semester %}Sem {{ r.semester }}{% else %}—{% endif %}</td>
+          <td>
+            <span class="badge badge-primary">{{ students|length }} students</span>
+            {% if students %}
+            <div style="margin-top:5px;font-size:11px;color:#6b7280;">
+              {% for s in students[:3] %}
+              <div>{{ s.reg_no }} — {{ s.name }}</div>
+              {% endfor %}
+              {% if students|length > 3 %}
+              <div style="color:#1a237e;font-weight:700;">+ {{ students|length - 3 }} more...</div>
+              {% endif %}
+            </div>
+            {% endif %}
+          </td>
+          <td style="font-size:13px;">{{ r.uploader.name }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ r.uploaded_at.strftime('%d %b %Y %H:%M') }}</td>
+          <td>
+            <button onclick="viewStudents({{ r.id }},'CIA {{ cia_num }} — {{ r.subject.subject_name }}')"
+                    class="btn btn-outline btn-sm">👁 View All</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:30px;">
+    <div class="icon">📭</div>
+    <h4>No CIA {{ cia_num }} Lists</h4>
+    <p>No absentee lists uploaded for CIA {{ cia_num }} yet.</p>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{{ cia_section(1, records_cia1) }}
+{{ cia_section(2, records_cia2) }}
+{{ cia_section(3, records_cia3) }}
+
+<!-- View Students Modal -->
+<div class="modal-overlay" id="studentsModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h3 id="modalTitle">Students</h3>
+      <span class="modal-close" onclick="closeModal('studentsModal')">✕</span>
+    </div>
+    <div id="studentsTable" style="max-height:400px;overflow-y:auto;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function viewStudents(recordId, title) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('studentsTable').innerHTML = '<p style="text-align:center;color:#9ca3af;padding:20px;">Loading...</p>';
+  openModal('studentsModal');
+  try {
+    const res  = await fetch(`/staff/absentees/${recordId}/get_students`);
+    const data = await res.json();
+    const students = data.students || [];
+    if (students.length === 0) {
+      document.getElementById('studentsTable').innerHTML =
+        '<p style="text-align:center;color:#9ca3af;padding:20px;">No student records available (file was uploaded without parsing).</p>';
+      return;
+    }
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:#e8eaf6;">
+        <th style="padding:8px 12px;text-align:left;color:#1a237e;">#</th>
+        <th style="padding:8px 12px;text-align:left;color:#1a237e;">Register No.</th>
+        <th style="padding:8px 12px;text-align:left;color:#1a237e;">Student Name</th>
+      </tr></thead><tbody>`;
+    students.forEach((s,i) => {
+      const bg = i%2===0?'#fff':'#f8f9ff';
+      html += `<tr style="background:${bg};border-bottom:0.5px solid #e0e7ff;">
+        <td style="padding:7px 12px;">${i+1}</td>
+        <td style="padding:7px 12px;font-weight:700;font-family:monospace;">${s.reg_no||'—'}</td>
+        <td style="padding:7px 12px;">${s.name||'—'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('studentsTable').innerHTML = html;
+  } catch(e) {
+    document.getElementById('studentsTable').innerHTML = '<p style="color:#e53935;padding:20px;">Error loading students.</p>';
+  }
+}
+</script>
+{% endblock %}

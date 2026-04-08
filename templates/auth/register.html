@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block head %}{% include "auth/_anim_styles.html" %}{% endblock %}
+{% block body %}
+<div class="auth-page">
+  <div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div>
+  <div class="ring1"></div><div class="ring2"></div>
+  <div id="pts"></div>
+  <div class="auth-card" style="max-width:520px;">
+    <div class="card-corner cc-tl"></div><div class="card-corner cc-br"></div>
+    <div class="auth-logo">
+      <img src="{{ url_for('static', filename='ace_logo.jpg') }}" alt="ACE Logo"
+           onerror="this.outerHTML='<div style=\'width:72px;height:72px;background:linear-gradient(135deg,#1a237e,#e53935);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:12px;\'>📋</div>'">
+      <h1>Student Registration</h1>
+      <p>CIA Retest Portal — Adhiyamaan College of Engineering</p>
+    </div>
+    <form method="POST" action="{{ url_for('auth.register') }}" id="regForm" novalidate>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="f-group fi1">
+          <label class="f-label">Full Name <span class="req">*</span></label>
+          <input type="text" name="name" class="f-input" placeholder="Your full name" required>
+        </div>
+        <div class="f-group fi1">
+          <label class="f-label">Register Number <span class="req">*</span></label>
+          <input type="text" name="register_number" class="f-input" placeholder="e.g. 22CSB001" required>
+        </div>
+        <div class="f-group fi2" style="grid-column:span 2;">
+          <label class="f-label">Email Address <span class="req">*</span></label>
+          <input type="email" name="email" class="f-input" placeholder="your@college.edu" required>
+        </div>
+        <div class="f-group fi3">
+          <label class="f-label">Phone Number</label>
+          <input type="text" name="phone" class="f-input" placeholder="10-digit number">
+        </div>
+        <div class="f-group fi3">
+          <label class="f-label">Department</label>
+          <select name="department" class="f-input">
+            <option value="">Select Department</option>
+            <option>Computer Science</option><option>Information Technology</option>
+            <option>Electronics</option><option>Mechanical</option><option>Civil</option><option>EEE</option>
+          </select>
+        </div>
+        <div class="f-group fi4">
+          <label class="f-label">Password <span class="req">*</span></label>
+          <div class="pw-wrap">
+            <input type="password" name="password" id="pw1" class="f-input" placeholder="Min 6 characters" required minlength="6" style="padding-right:40px">
+            <button type="button" class="pw-eye" onclick="togglePw('pw1',this)">👁️</button>
+          </div>
+        </div>
+        <div class="f-group fi4">
+          <label class="f-label">Confirm Password <span class="req">*</span></label>
+          <div class="pw-wrap">
+            <input type="password" name="confirm_password" id="pw2" class="f-input" placeholder="Re-enter password" required style="padding-right:40px">
+            <button type="button" class="pw-eye" onclick="togglePw('pw2',this)">👁️</button>
+          </div>
+        </div>
+      </div>
+      <div class="fi5" style="margin-top:6px;">
+        <button type="submit" class="btn-auth">🎓 Create Account</button>
+      </div>
+    </form>
+    <p class="auth-footer-link fi6">Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a></p>
+  </div>
+</div>
+<script>
+(function(){const c=document.getElementById('pts');const cols=['rgba(255,255,255,.5)','rgba(144,164,251,.5)','rgba(229,57,53,.4)','rgba(66,165,245,.45)'];for(let i=0;i<14;i++){const p=document.createElement('div');p.className='particle';const sz=Math.random()*5+2;p.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;bottom:-10px;background:${cols[Math.floor(Math.random()*cols.length)]};animation-duration:${7+Math.random()*9}s;animation-delay:${Math.random()*8}s;`;c.appendChild(p);}})();
+function togglePw(id,btn){const f=document.getElementById(id);f.type=f.type==='password'?'text':'password';btn.textContent=f.type==='password'?'👁️':'🙈';}
+document.querySelectorAll('.f-input').forEach(el=>{el.addEventListener('focus',function(){this.style.borderColor='#1a237e';});el.addEventListener('blur',function(){this.style.borderColor=this.value?'#c5cae9':'#e0e7ff';});});
+</script>
+{% endblock %}

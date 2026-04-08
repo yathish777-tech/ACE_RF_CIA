@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}CIA Retest Portal{% endblock %} | Dept. Portal</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div style="position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;">
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ 'danger' if cat == 'error' else cat }}" style="min-width:300px;max-width:420px;box-shadow:0 4px 20px rgba(0,0,0,0.15);">
+          <span>{{ '✅' if cat == 'success' else ('❌' if cat == 'danger' else ('⚠️' if cat == 'warning' else 'ℹ️')) }}</span>
+          {{ msg }}
+          <span onclick="this.parentElement.remove()" style="margin-left:auto;cursor:pointer;opacity:0.6;">✕</span>
+        </div>
+      {% endfor %}
+    </div>
+    <script>setTimeout(()=>document.querySelectorAll('.alert').forEach(a=>a.remove()),5000)</script>
+  {% endif %}
+{% endwith %}
+
+{% block body %}{% endblock %}
+
+<script>
+// Auto-dismiss alerts
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-dismiss]').forEach(el => {
+    el.addEventListener('click', () => el.closest('.alert').remove());
+  });
+});
+
+function openModal(id) {
+  document.getElementById(id).classList.add('show');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+window.addEventListener('click', e => {
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    if(e.target === m) m.classList.remove('show');
+  });
+});
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

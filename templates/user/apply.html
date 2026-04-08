@@ -1,0 +1,573 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Apply for Retest{% endblock %}
+{% block page_title %}Apply for CIA Retest{% endblock %}
+{% block sidebar_nav %}
+<a href="{{ url_for('user.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
+<a href="{{ url_for('user.apply') }}" class="nav-item active"><span class="nav-icon">➕</span> Apply for Retest</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div><h2>📝 CIA Retest Application</h2><p>Attachment (Medical / OD / Other proof) is mandatory.</p></div>
+  <a href="{{ url_for('user.dashboard') }}" class="btn btn-outline">← Back</a>
+</div>
+
+<!-- Deadline banner — JS-driven, hidden by default -->
+<div id="deadline-banner" style="display:none;padding:13px 18px;border-radius:10px;margin-bottom:16px;font-size:13px;font-weight:700;border-left:4px solid #e53935;background:#ffebee;color:#c62828;">
+  <span id="deadline-msg"></span>
+</div>
+
+<!-- Flow guide -->
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-body" style="padding:12px 18px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="padding:10px 14px;background:#e8eaf6;border-radius:8px;border-left:3px solid #1a237e;">
+        <div style="font-weight:700;color:#1a237e;font-size:12px;">📋 Pre-Submission</div>
+        <div style="font-size:11px;color:#374151;margin-top:3px;">Staff → Tutor → HOD (Final)</div>
+      </div>
+      <div style="padding:10px 14px;background:#fff3e0;border-radius:8px;border-left:3px solid #f57c00;">
+        <div style="font-weight:700;color:#e65100;font-size:12px;">⏰ Late Submission</div>
+        <div style="font-size:11px;color:#374151;margin-top:3px;">Staff → Tutor → Coordinator → HOD (Final)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Application Form</h3><span class="badge badge-danger">All * fields required</span></div>
+  <div class="card-body">
+    <form method="POST" enctype="multipart/form-data" id="applyForm">
+
+      <!-- Student Info -->
+      <div style="background:var(--color-background-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:12px;">👤 Student Information</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Register Number <span class="required">*</span></label>
+            <input type="text" name="register_number" class="form-control {% if errors.register_number %}is-invalid{% endif %}"
+                   value="{{ form.get('register_number', current_user.register_number or '') }}" required>
+            {% if errors.register_number %}<div class="inline-err">⚠️ {{ errors.register_number }}</div>{% endif %}
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Student Name <span class="required">*</span></label>
+            <input type="text" name="student_name" class="form-control {% if errors.student_name %}is-invalid{% endif %}"
+                   value="{{ form.get('student_name', current_user.name) }}" required>
+            {% if errors.student_name %}<div class="inline-err">⚠️ {{ errors.student_name }}</div>{% endif %}
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Email Address <span class="required">*</span></label>
+            <input type="email" name="student_email" class="form-control {% if errors.student_email %}is-invalid{% endif %}"
+                   value="{{ form.get('student_email', current_user.email) }}" required>
+            {% if errors.student_email %}<div class="inline-err">⚠️ {{ errors.student_email }}</div>{% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Subject & Exam Info -->
+      <div style="background:var(--color-background-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:10px;">📚 Subject & Exam Details</div>
+
+        <!-- Section info -->
+        <div style="padding:8px 14px;background:#e8eaf6;border-radius:7px;margin-bottom:12px;font-size:12px;color:#1a237e;border-left:3px solid #1a237e;">
+          🎓 Your Section: <strong>{{ student_section }}</strong>
+          {% if student_year %} &nbsp;|&nbsp; Year: <strong>{{ student_year }}</strong>{% endif %}
+          &nbsp;&nbsp;<span style="color:#6b7280;font-size:11px;">Staff is auto-assigned based on your section</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Section <span class="required">*</span></label>
+            <div style="display:flex;gap:8px;">
+              {% for sec in ['A','B','C'] %}
+              {% set sel = form.get('student_section', student_section) %}
+              <label id="secLabel_{{ sec }}"
+                     style="flex:1;display:flex;align-items:center;justify-content:center;
+                            cursor:pointer;padding:11px 6px;border-radius:9px;font-size:15px;
+                            font-weight:800;transition:all .2s;
+                            border:2px solid {% if sel==sec %}#1a237e{% else %}#e0e7ff{% endif %};
+                            background:{% if sel==sec %}#1a237e{% else %}'transparent'{% endif %};
+                            color:{% if sel==sec %}#fff{% else %}#6b7280{% endif %};">
+                <input type="radio" name="student_section" value="{{ sec }}"
+                       id="sec{{ sec }}"
+                       {% if sel==sec %}checked{% endif %}
+                       style="display:none;"
+                       onchange="onSectionChange('{{ sec }}')"> {{ sec }}
+              </label>
+              {% endfor %}
+            </div>
+            {% if errors.student_section %}
+            <div class="inline-err" style="margin-top:6px;">⚠️ {{ errors.student_section }}</div>
+            {% endif %}
+          </div>
+
+          <!-- 1. Semester -->
+          <div class="form-group">
+            <label class="form-label">Semester <span class="required">*</span></label>
+            <select name="semester" class="form-control {% if errors.semester %}is-invalid{% endif %}"
+                    required id="semesterSelect">
+              <option value="">-- Select Semester --</option>
+              {% for i in range(1,9) %}
+              <option value="{{ i }}" {% if form.get('semester')==(i|string) %}selected{% endif %}>
+                Semester {{ i }} — Year {{ ['I','I','II','II','III','III','IV','IV'][i-1] }}
+              </option>
+              {% endfor %}
+            </select>
+            {% if errors.semester %}<div class="inline-err">⚠️ {{ errors.semester }}</div>{% endif %}
+          </div>
+
+          <!-- 2. Academic Year (read-only, auto-filled by JS) -->
+          <div class="form-group">
+            <label class="form-label">Academic Year <span style="font-size:11px;color:#9ca3af;">(auto-filled)</span></label>
+            <input type="text" id="yearDisplay" class="form-control" readonly
+                   placeholder="Select semester first"
+                   style="background:#f0f4ff;cursor:not-allowed;font-weight:700;color:#1a237e;">
+            <!-- Hidden input to send numeric year to backend -->
+            <input type="hidden" id="studentYear" name="student_year">
+          </div>
+
+          <!-- 3. Subject (loaded by AJAX after semester change) -->
+          <div class="form-group">
+            <label class="form-label">Subject <span class="required">*</span></label>
+            <select name="subject_id" class="form-control {% if errors.subject_id %}is-invalid{% endif %}"
+                    required id="subjectSelect">
+              <option value="">-- Select semester first --</option>
+            </select>
+            <div id="subjectLoading" style="font-size:11px;color:#6b7280;margin-top:4px;display:none;">⏳ Loading subjects…</div>
+            {% if errors.subject_id %}<div class="inline-err">⚠️ {{ errors.subject_id }}</div>{% endif %}
+          </div>
+
+          <!-- 4. CIA Number -->
+          <div class="form-group">
+            <label class="form-label">CIA Number <span class="required">*</span></label>
+            <select name="cia_number" class="form-control {% if errors.cia_number %}is-invalid{% endif %}"
+                    required id="ciaSelect">
+              <option value="">-- Select CIA --</option>
+              <option value="1" {% if form.get('cia_number')=='1' %}selected{% endif %}>CIA - 1</option>
+              <option value="2" {% if form.get('cia_number')=='2' %}selected{% endif %}>CIA - 2</option>
+              <option value="3" {% if form.get('cia_number')=='3' %}selected{% endif %}>CIA - 3 (Model)</option>
+            </select>
+            {% if errors.cia_number %}<div class="inline-err">⚠️ {{ errors.cia_number }}</div>{% endif %}
+          </div>
+
+          <!-- 5. CIA Exam Date (auto-filled by AJAX) -->
+          <div class="form-group">
+            <label class="form-label">CIA Exam Date <span class="required">*</span>
+              <span style="font-size:11px;color:#9ca3af;">(auto-filled)</span>
+            </label>
+            <input type="date" name="cia_date" id="ciaDateInput" class="form-control" required
+                   value="{{ form.get('cia_date','') }}"
+                   style="background:#f0f4ff;">
+            <div id="ciaDateHelp" style="font-size:11px;color:#9ca3af;margin-top:3px;">Select subject and CIA number above</div>
+            <div id="retestDateInfo" style="font-size:11px;color:#2e7d32;margin-top:4px;display:none;"></div>
+          </div>
+
+          <!-- 6. Subject Handling Staff (auto-filled by AJAX based on section) -->
+          <div class="form-group">
+            <label class="form-label">Subject Handling Staff <span class="required">*</span>
+              <span style="font-size:11px;color:#2e7d32;">✓ Auto-assigned by section</span>
+            </label>
+            <select name="staff_id" class="form-control {% if errors.staff_id %}is-invalid{% endif %}"
+                    required id="staffSelect">
+              <option value="">-- Auto-filled on subject select --</option>
+            </select>
+            {% if errors.staff_id %}<div class="inline-err">⚠️ {{ errors.staff_id }}</div>{% endif %}
+          </div>
+
+          <!-- 7. Tutor -->
+          <div class="form-group">
+            <label class="form-label">Tutor <span class="required">*</span></label>
+            <select name="tutor_id" class="form-control {% if errors.tutor_id %}is-invalid{% endif %}" required>
+              <option value="">-- Select Tutor --</option>
+              {% for t in tutors %}
+              <option value="{{ t.id }}" {% if form.get('tutor_id')==(t.id|string) %}selected{% endif %}>{{ t.name }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.tutor_id %}<div class="inline-err">⚠️ {{ errors.tutor_id }}</div>{% endif %}
+          </div>
+
+          <!-- 8. Submission Type -->
+          <div class="form-group">
+            <label class="form-label">Submission Type <span class="required">*</span></label>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+              {% for val, lbl in [('pre','📋 Pre-Submission'),('late','⏰ Late Submission')] %}
+              <label class="type-label" data-val="{{ val }}"
+                     style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;padding:11px;
+                            border:1.5px solid {% if form.get('submission_type','pre')==val %}#1a237e{% else %}#e0e7ff{% endif %};
+                            background:{% if form.get('submission_type','pre')==val %}#e8eaf6{% else %}transparent{% endif %};
+                            color:{% if form.get('submission_type','pre')==val %}#1a237e{% else %}#6b7280{% endif %};
+                            border-radius:9px;font-size:13px;font-weight:700;transition:all .2s;">
+                <input type="radio" name="submission_type" value="{{ val }}"
+                       {% if form.get('submission_type','pre')==val %}checked{% endif %}
+                       style="display:none;"> {{ lbl }}
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reason for Absence -->
+      <div style="background:var(--color-background-secondary);border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:10px;">📝 Reason for Absence</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;" id="reasonRadioGroup">
+          {% for val, label in [('health_issues','🤒 Health Issues'),('on_duty','🏅 On Duty'),('others','✏️ Others')] %}
+          <label class="reason-label" data-val="{{ val }}"
+                 style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:9px 16px;
+                        border:1.5px solid {% if form.get('reason_type')==val %}#1a237e{% else %}#e0e7ff{% endif %};
+                        background:{% if form.get('reason_type')==val %}#e8eaf6{% else %}transparent{% endif %};
+                        color:{% if form.get('reason_type')==val %}#1a237e{% else %}#6b7280{% endif %};
+                        border-radius:8px;font-size:13px;font-weight:700;transition:all .2s;">
+            <input type="radio" name="reason_type" value="{{ val }}"
+                   {% if form.get('reason_type')==val %}checked{% endif %}
+                   style="display:none;"> {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+        {% if errors.reason_type %}<div class="inline-err" style="margin-bottom:8px;">⚠️ {{ errors.reason_type }}</div>{% endif %}
+        <div id="otherReasonGroup" style="display:{% if form.get('reason_type')=='others' %}block{% else %}none{% endif %};">
+          <label class="form-label">Specify Reason <span class="required">*</span></label>
+          <textarea name="reason_detail" class="form-control {% if errors.reason_detail %}is-invalid{% endif %}"
+                    rows="2" placeholder="Describe your reason...">{{ form.get('reason_detail','') }}</textarea>
+          {% if errors.reason_detail %}<div class="inline-err">⚠️ {{ errors.reason_detail }}</div>{% endif %}
+        </div>
+      </div>
+
+      <!-- Attachment -->
+      <div style="background:var(--color-background-secondary);border-radius:10px;padding:16px;margin-bottom:16px;
+                  border:2px solid {% if errors.attachment %}#e53935{% else %}#e0e7ff{% endif %};">
+        <div style="font-size:12px;font-weight:700;color:#c62828;margin-bottom:6px;">
+          📎 Proof Document <span style="color:#e53935;">* MANDATORY</span>
+        </div>
+        <div style="font-size:11px;color:#374151;margin-bottom:10px;">
+          Medical Certificate / OD Letter / Other Proof — PDF, JPG or PNG only
+        </div>
+        <input type="file" name="attachment" class="form-control" accept=".pdf,.jpg,.jpeg,.png"
+               required id="attachInput">
+        <div id="fileNameDisplay" style="margin-top:6px;font-size:12px;color:#2e7d32;font-weight:700;display:none;"></div>
+        {% if errors.attachment %}<div class="inline-err" style="margin-top:6px;">⚠️ {{ errors.attachment }}</div>{% endif %}
+      </div>
+
+      <!-- Submit -->
+      <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;">
+        <a href="{{ url_for('user.dashboard') }}" class="btn btn-outline">Cancel</a>
+        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">📤 Submit Application</button>
+      </div>
+      <!-- Error shown near submit button -->
+      <div id="submitErrBox" style="display:none;margin-top:10px;padding:10px 16px;background:#ffebee;
+           border-radius:8px;color:#c62828;font-size:13px;font-weight:700;border-left:3px solid #e53935;"></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.is-invalid { border-color:#e53935 !important; background:#fff8f8 !important; }
+.inline-err { font-size:11px;color:#e53935;font-weight:700;margin-top:4px;display:flex;align-items:center;
+              gap:4px;padding:4px 8px;background:#fff5f5;border-radius:5px;border-left:2px solid #e53935; }
+</style>
+<script>
+/* ── Section selector visual update ── */
+function onSectionChange(sec) {
+  ['A','B','C'].forEach(function(s) {
+    var lbl = document.getElementById('secLabel_' + s);
+    if (!lbl) return;
+    if (s === sec) {
+      lbl.style.border = '2px solid #1a237e';
+      lbl.style.background = '#1a237e';
+      lbl.style.color = '#fff';
+    } else {
+      lbl.style.border = '2px solid #e0e7ff';
+      lbl.style.background = 'transparent';
+      lbl.style.color = '#6b7280';
+    }
+  });
+}
+
+/* ── Semester → Year label map ── */
+const SEM_YEAR_LABEL = {
+  1:'First Year (I)',  2:'First Year (I)',
+  3:'Second Year (II)',4:'Second Year (II)',
+  5:'Third Year (III)',6:'Third Year (III)',
+  7:'Fourth Year (IV)',8:'Fourth Year (IV)'
+};
+
+/* ── Semester → Numeric year map ── */
+const SEMESTER_TO_YEAR = {
+  1:1, 2:1,
+  3:2, 4:2,
+  5:3, 6:3,
+  7:4, 8:4
+};
+
+/* ── SEMESTER CHANGE ── */
+document.getElementById('semesterSelect').addEventListener('change', function() {
+  const sem = parseInt(this.value);
+  const yearDisplay = document.getElementById('yearDisplay');
+  const studentYear = document.getElementById('studentYear');
+  
+  if (sem) {
+    yearDisplay.value = SEM_YEAR_LABEL[sem] || '';
+    studentYear.value = SEMESTER_TO_YEAR[sem] || '';
+  } else {
+    yearDisplay.value = '';
+    studentYear.value = '';
+  }
+
+  // Reset downstream fields
+  resetSubjects();
+  resetStaff();
+  resetCIADate();
+
+  if (!sem) return;
+
+  // Load subjects for this semester (section-aware via server)
+  loadSubjects(sem);
+});
+
+function loadSubjects(sem) {
+  const subjectSel  = document.getElementById('subjectSelect');
+  const loadingDiv  = document.getElementById('subjectLoading');
+  subjectSel.innerHTML = '<option value="">-- Loading… --</option>';
+  loadingDiv.style.display = 'block';
+
+  fetch(`/user/get_subjects_by_semester/${sem}`)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loadingDiv.style.display = 'none';
+      subjectSel.innerHTML = '<option value="">-- Select Subject --</option>';
+      var subjects = data.subjects || data;
+      if (Array.isArray(subjects)) {
+        subjects.forEach(function(s) {
+          var opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.name;
+          opt.setAttribute('data-staff-id',   s.staff_id   || '');
+          opt.setAttribute('data-staff-name', s.staff_name || '');
+          subjectSel.appendChild(opt);
+        });
+      }
+    })
+    .catch(function() {
+      loadingDiv.style.display = 'none';
+      subjectSel.innerHTML = '<option value="">-- Error loading subjects --</option>';
+    });
+}
+
+/* ── SUBJECT CHANGE ── */
+document.getElementById('subjectSelect').addEventListener('change', function() {
+  var subjectId = this.value;
+  resetStaff();
+  resetCIADate();
+  if (!subjectId) return;
+
+  // Fill staff from data attributes first (already in dropdown option)
+  var opt = this.options[this.selectedIndex];
+  var staffId   = opt.getAttribute('data-staff-id');
+  var staffName = opt.getAttribute('data-staff-name');
+
+  if (staffId && staffId !== 'null' && staffId !== '') {
+    setStaff(staffId, staffName);
+  } else {
+    // AJAX fallback
+    fetch('/user/get_staff/' + subjectId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.staff_id) setStaff(d.staff_id, d.staff_name);
+        else document.getElementById('staffSelect').innerHTML =
+             '<option value="">No staff assigned to your section</option>';
+      })
+      .catch(function() {});
+  }
+
+  // If CIA already selected, fetch CIA info
+  var ciaNum = document.getElementById('ciaSelect').value;
+  if (ciaNum) fetchCIAInfo(subjectId, ciaNum);
+});
+
+/* ── CIA NUMBER CHANGE ── */
+document.getElementById('ciaSelect').addEventListener('change', function() {
+  var subjectId = document.getElementById('subjectSelect').value;
+  var ciaNum    = this.value;
+  if (subjectId && ciaNum) fetchCIAInfo(subjectId, ciaNum);
+  else resetCIADate();
+});
+
+/* ── FETCH CIA INFO ── */
+function fetchCIAInfo(subjectId, ciaNum) {
+  var dateInput   = document.getElementById('ciaDateInput');
+  var retestInfo  = document.getElementById('retestDateInfo');
+  var helpText    = document.getElementById('ciaDateHelp');
+  var banner      = document.getElementById('deadline-banner');
+  var deadlineMsg = document.getElementById('deadline-msg');
+  var submitBtn   = document.getElementById('submitBtn');
+
+  fetch('/user/get_cia_info/' + subjectId + '/' + ciaNum)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      // 1. Fill exam date
+      if (d.exam_date) {
+        dateInput.value = d.exam_date;
+        dateInput.style.background = '#f0f4ff';
+        helpText.style.display = 'none';
+      } else {
+        dateInput.value = '';
+        helpText.textContent = 'No exam date configured for this CIA yet';
+        helpText.style.display = 'block';
+      }
+
+      // 2. Show retest date
+      if (d.retest_date) {
+        retestInfo.textContent = '📅 Retest Date: ' + d.retest_date;
+        retestInfo.style.display = 'block';
+      } else {
+        retestInfo.style.display = 'none';
+      }
+
+      // 3. Window / deadline banner
+      var isOpen    = d.is_open;
+      var windowOn  = d.retest_open;   /* manual toggle */
+      var endDisp   = d.end_date_display;
+
+      if (!isOpen) {
+        var reason = !windowOn
+          ? 'Retest window is currently CLOSED by admin. Contact HOD or Admin to open.'
+          : ('Application deadline was ' + endDisp + '. Period is over. Contact Admin to re-open.');
+        deadlineMsg.textContent = '⛔ ' + reason;
+        banner.style.cssText = 'display:block;padding:13px 18px;border-radius:10px;margin-bottom:16px;font-size:13px;font-weight:700;border-left:4px solid #e53935;background:#ffebee;color:#c62828;';
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.5';
+        submitBtn.title = 'Application window is closed';
+      } else {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.title = '';
+        if (endDisp) {
+          deadlineMsg.textContent = '✅ Application window is open. Deadline: ' + endDisp;
+          banner.style.cssText = 'display:block;padding:13px 18px;border-radius:10px;margin-bottom:16px;font-size:13px;font-weight:700;border-left:4px solid #2e7d32;background:#e8f5e9;color:#1b5e20;';
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+    })
+    .catch(function() {
+      // On fetch error — don't block submission
+      dateInput.style.background = '#f0f4ff';
+      helpText.textContent = 'Could not load CIA dates. Please select manually.';
+      helpText.style.display = 'block';
+      // Allow manual date entry on error
+      dateInput.removeAttribute('readonly');
+      dateInput.style.background = '';
+      dateInput.style.cursor = '';
+    });
+}
+
+/* ── HELPERS ── */
+function setStaff(id, name) {
+  var sel = document.getElementById('staffSelect');
+  sel.innerHTML = '<option value="' + id + '" selected>' + (name || 'Staff #' + id) + '</option>';
+}
+function resetSubjects() {
+  document.getElementById('subjectSelect').innerHTML = '<option value="">-- Select semester first --</option>';
+}
+function resetStaff() {
+  document.getElementById('staffSelect').innerHTML = '<option value="">-- Auto-filled on subject select --</option>';
+}
+function resetCIADate() {
+  document.getElementById('ciaDateInput').value = '';
+  document.getElementById('retestDateInfo').style.display = 'none';
+  document.getElementById('ciaDateHelp').style.display = 'none';
+  document.getElementById('deadline-banner').style.display = 'none';
+  // Re-enable submit in case it was disabled
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = false; btn.style.opacity = '1'; btn.title = '';
+}
+
+/* ── FILE INPUT — show filename only, no page navigation ── */
+document.getElementById('attachInput').addEventListener('change', function() {
+  var display = document.getElementById('fileNameDisplay');
+  if (this.files && this.files.length > 0) {
+    display.textContent = '✅ ' + this.files[0].name;
+    display.style.display = 'block';
+  } else {
+    display.style.display = 'none';
+  }
+});
+
+/* ── REASON RADIO ── */
+document.querySelectorAll('.reason-label').forEach(function(lbl) {
+  lbl.addEventListener('click', function() {
+    document.querySelectorAll('.reason-label').forEach(function(l) {
+      l.style.borderColor = '#e0e7ff'; l.style.background = 'transparent'; l.style.color = '#6b7280';
+    });
+    this.style.borderColor = '#1a237e'; this.style.background = '#e8eaf6'; this.style.color = '#1a237e';
+    this.querySelector('input').checked = true;
+    var val = this.getAttribute('data-val');
+    document.getElementById('otherReasonGroup').style.display = val === 'others' ? 'block' : 'none';
+  });
+});
+
+/* ── SUBMISSION TYPE RADIO ── */
+document.querySelectorAll('.type-label').forEach(function(lbl) {
+  lbl.addEventListener('click', function() {
+    document.querySelectorAll('.type-label').forEach(function(l) {
+      l.style.borderColor = '#e0e7ff'; l.style.background = 'transparent'; l.style.color = '#6b7280';
+    });
+    this.style.borderColor = '#1a237e'; this.style.background = '#e8eaf6'; this.style.color = '#1a237e';
+    this.querySelector('input').checked = true;
+  });
+});
+
+/* ── FORM SUBMIT — validate, then show loading ── */
+document.getElementById('applyForm').addEventListener('submit', function(e) {
+  var errBox = document.getElementById('submitErrBox');
+  errBox.style.display = 'none';
+
+  // Check CIA date filled
+  var ciaDate = document.getElementById('ciaDateInput').value;
+  if (!ciaDate) {
+    e.preventDefault();
+    errBox.textContent = '⚠️ CIA Exam Date is required. Please select subject and CIA number first, or enter the date manually.';
+    errBox.style.display = 'block';
+    document.getElementById('ciaDateInput').scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+
+  // Show loading state
+  var btn = document.getElementById('submitBtn');
+  btn.textContent = '⏳ Submitting…';
+  btn.disabled = true;
+});
+
+/* ── INIT: restore state if form was re-rendered after validation error ── */
+(function init() {
+  var savedSem    = '{{ form.get("semester", "") }}';
+  var savedSub    = '{{ form.get("subject_id", "") }}';
+  var savedCia    = '{{ form.get("cia_number", "") }}';
+
+  if (savedSem) {
+    var yearDisplay = document.getElementById('yearDisplay');
+    var studentYear = document.getElementById('studentYear');
+    var sem = parseInt(savedSem);
+    yearDisplay.value = SEM_YEAR_LABEL[sem] || '';
+    studentYear.value = SEMESTER_TO_YEAR[sem] || '';
+
+    // Load subjects and then restore saved subject + staff
+    loadSubjects(sem);
+
+    // After subjects load, we need to restore subject selection
+    // We use a small delay to wait for fetch
+    if (savedSub) {
+      setTimeout(function() {
+        var sel = document.getElementById('subjectSelect');
+        // Try to set value — if option exists
+        sel.value = savedSub;
+        if (sel.value === savedSub && savedCia) {
+          fetchCIAInfo(savedSub, savedCia);
+        }
+      }, 800);
+    }
+  }
+})();
+</script>
+{% endblock %}
