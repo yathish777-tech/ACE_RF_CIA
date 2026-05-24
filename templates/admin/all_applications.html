@@ -13,6 +13,10 @@
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item active"><span class="nav-icon">📋</span> Applications</a>
 <a href="{{ url_for('admin.view_absentees') }}" class="nav-item"><span class="nav-icon">🚫</span> Absentee Lists</a>
+<a href="{{ url_for('admin.view_absentees_subject') }}" class="nav-item {% if request.endpoint=='admin.view_absentees_subject' %}active{% endif %}"><span class="nav-icon">📖</span> Subject-wise Absent</a>
+<span class="nav-section-label" style="margin-top:10px;">Exam</span>
+<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item {% if request.endpoint=='admin.seating_allotment' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allotment</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item {% if request.endpoint=='admin.view_attendance' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance</a>
 {% endblock %}
 
 {% block content %}

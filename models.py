@@ -229,6 +229,11 @@ class RetestApplication(db.Model):
     # Final decision (set after HOD approves)
     final_status     = db.Column(db.String(20), default='pending', nullable=False)
 
+    # v10 — retransmit tracking
+    retransmit_count = db.Column(db.Integer, default=0, nullable=True)
+    retransmit_by    = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    retransmit_at    = db.Column(db.DateTime, nullable=True)
+
     submitted_at     = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at       = db.Column(db.DateTime, default=datetime.utcnow,
                                   onupdate=datetime.utcnow)
@@ -304,18 +309,98 @@ class AbsenceRecord(db.Model):
             normalized = []
             for s in students:
                 if isinstance(s, dict):
-                    # Extract register number from any of the possible keys
                     reg = s.get('reg_no') or s.get('register_number') or s.get('register_no') or s.get('reg') or ''
-                    # Extract name from any of the possible keys
                     name = s.get('name') or s.get('student_name') or ''
-                    # Store with all keys for frontend compatibility
+                    year = s.get('year') or s.get('yr') or ''
+                    section = (s.get('section') or s.get('sec') or '').upper()
                     normalized.append({
                         'reg_no': reg,
                         'register_number': reg,
                         'register_no': reg,
                         'reg': reg,
                         'name': name,
-                        'student_name': name
+                        'student_name': name,
+                        'year': year,
+                        'section': section
                     })
             return normalized
         return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SEATING ALLOTMENT  (uploaded by admin/HOD — hall-wise exam seating)
+# ─────────────────────────────────────────────────────────────────────────────
+class SeatingAllotment(db.Model):
+    __tablename__ = 'seating_allotment'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    hall_number  = db.Column(db.String(30),  nullable=False)   # e.g. CSCR107
+    year         = db.Column(db.Integer,     nullable=True)    # 1-4
+    section      = db.Column(db.String(5),   nullable=True)    # A / B / C
+    # Register numbers stored as JSON list ["6176AC22UCS022","6176AC22UCS105",...]
+    register_numbers = db.Column(db.Text,    nullable=True)
+    num_students     = db.Column(db.Integer, nullable=True)    # count per row
+    total_students   = db.Column(db.Integer, nullable=True)    # total in hall
+
+    # Invigilator assigned to this hall
+    invigilator_id = db.Column(db.Integer,
+                                db.ForeignKey('user.id', ondelete='SET NULL'),
+                                nullable=True)
+
+    uploaded_by  = db.Column(db.Integer,
+                              db.ForeignKey('user.id', ondelete='SET NULL'),
+                              nullable=True)
+    uploaded_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    invigilator = db.relationship('User', foreign_keys=[invigilator_id],
+                                   backref=db.backref('invigilator_halls', lazy='dynamic'))
+    uploader    = db.relationship('User', foreign_keys=[uploaded_by],
+                                   backref=db.backref('seating_uploads', lazy='dynamic'))
+
+    def set_register_numbers(self, reg_list):
+        self.register_numbers = json.dumps(reg_list)
+
+    def get_register_numbers(self):
+        if self.register_numbers:
+            return json.loads(self.register_numbers)
+        return []
+
+    def __repr__(self):
+        return f'<SeatingAllotment hall={self.hall_number} yr={self.year} sec={self.section}>'
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXAM ATTENDANCE  (invigilator marks absent/present per hall per student)
+# ─────────────────────────────────────────────────────────────────────────────
+class ExamAttendance(db.Model):
+    __tablename__ = 'exam_attendance'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    seating_id       = db.Column(db.Integer,
+                                  db.ForeignKey('seating_allotment.id', ondelete='CASCADE'),
+                                  nullable=False)
+    hall_number      = db.Column(db.String(30),  nullable=False)
+    register_number  = db.Column(db.String(30),  nullable=False)
+    year             = db.Column(db.Integer,      nullable=True)
+    section          = db.Column(db.String(5),    nullable=True)
+    status           = db.Column(db.String(10),   nullable=False, default='present')  # present / absent
+
+    marked_by        = db.Column(db.Integer,
+                                  db.ForeignKey('user.id', ondelete='SET NULL'),
+                                  nullable=True)
+    marked_at        = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    seating  = db.relationship('SeatingAllotment',
+                                backref=db.backref('attendance_records', lazy='dynamic'))
+    marker   = db.relationship('User', foreign_keys=[marked_by],
+                                backref=db.backref('attendance_marked', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('seating_id', 'register_number',
+                            name='uq_attendance_seating_reg'),
+    )
+
+    def __repr__(self):
+        return f'<ExamAttendance hall={self.hall_number} reg={self.register_number} {self.status}>'

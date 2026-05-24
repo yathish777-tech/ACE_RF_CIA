@@ -176,13 +176,28 @@
           <!-- 7. Tutor -->
           <div class="form-group">
             <label class="form-label">Tutor <span class="required">*</span></label>
+            {% if auto_tutor %}
+            {# Auto-mapped based on year+section — hidden field, show read-only info #}
+            <input type="hidden" name="tutor_id" value="{{ auto_tutor.id }}">
+            <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;align-items:center;gap:10px;">
+              <span style="font-size:18px;">👨‍🏫</span>
+              <div>
+                <div style="font-weight:700;color:#065f46;">{{ auto_tutor.name }}</div>
+                <div style="font-size:12px;color:#6b7280;">{{ auto_tutor.email }}</div>
+                <div style="font-size:11px;color:#10b981;margin-top:2px;">✅ Auto-assigned based on your year &amp; section</div>
+              </div>
+            </div>
+            {% else %}
+            {# Fallback: manual selection #}
             <select name="tutor_id" class="form-control {% if errors.tutor_id %}is-invalid{% endif %}" required>
               <option value="">-- Select Tutor --</option>
               {% for t in tutors %}
               <option value="{{ t.id }}" {% if form.get('tutor_id')==(t.id|string) %}selected{% endif %}>{{ t.name }}</option>
               {% endfor %}
             </select>
+            <div style="font-size:11px;color:#f59e0b;margin-top:4px;">⚠ Tutor could not be auto-assigned. Please select manually.</div>
             {% if errors.tutor_id %}<div class="inline-err">⚠️ {{ errors.tutor_id }}</div>{% endif %}
+            {% endif %}
           </div>
 
           <!-- 8. Submission Type -->

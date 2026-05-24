@@ -126,112 +126,115 @@ def get_cia_info(subject_id, cia_num):
 @student_required
 def apply():
 
+    # Auto-resolve tutor based on student year+section (Feature 3 - Tutor Auto-mapping)
+    student_section = (getattr(current_user, 'section', '') or '').upper().strip()
+    _yr = getattr(current_user, 'year', None)
+    student_year = YEAR_LABEL.get(_yr, '') if _yr else ''
+
+    auto_tutor = None
+    if _yr and student_section:
+        auto_tutor = User.query.filter(
+            (User.role == 'tutor') | (User.secondary_role == 'tutor'),
+            User.handling_year    == _yr,
+            User.handling_section == student_section,
+            User.is_active        == True
+        ).first()
+
+    # Fallback list shown only if auto-map fails
     tutors = User.query.filter(
         (User.role == 'tutor') | (User.secondary_role == 'tutor'),
         User.is_active == True
     ).all()
 
-    # ✅ Get student section & year
-    student_section = (getattr(current_user, 'section', '') or '').upper().strip()
-    _yr = getattr(current_user, 'year', None)
-    student_year = YEAR_LABEL.get(_yr, '') if _yr else ''
-
-    form = {}
+    form   = {}
     errors = {}
 
     if request.method == 'POST':
         form = {k: v.strip() for k, v in request.form.items() if isinstance(v, str)}
 
-        # ✅ Required fields
+        # Auto-inject tutor_id when auto-mapped and form didn't send one
+        if not form.get('tutor_id') and auto_tutor:
+            form['tutor_id'] = str(auto_tutor.id)
+
+        selected_section = (form.get('student_section') or student_section).upper().strip()
+        if selected_section:
+            form['student_section'] = selected_section
+
         required_fields = [
             'register_number', 'student_name', 'student_email',
             'semester', 'subject_id', 'cia_number',
             'cia_date', 'staff_id', 'tutor_id',
-            'reason_type', 'submission_type'
+            'reason_type', 'submission_type', 'student_section'
         ]
-
         for field in required_fields:
             if not form.get(field):
                 errors[field] = f'{field.replace("_", " ").title()} is required.'
 
-        # ✅ If reason is "others", require reason_detail
         if form.get('reason_type') == 'others' and not form.get('reason_detail'):
             errors['reason_detail'] = 'Please specify your reason.'
 
-        # ✅ Prevent duplicate application
         if form.get('subject_id'):
             existing = RetestApplication.query.filter_by(
                 student_id=current_user.id,
                 subject_id=int(form['subject_id'])
             ).first()
-
             if existing:
                 errors['subject_id'] = 'You already applied for this subject.'
 
-        # ✅ CIA window check
         if form.get('subject_id') and form.get('cia_number'):
             cia = CIADate.query.filter_by(
                 subject_id=int(form['subject_id']),
                 cia_number=int(form['cia_number'])
             ).first()
-
             if cia and not cia.is_application_open():
                 errors['cia_number'] = 'Application window closed.'
 
-        # ✅ File check
         file = request.files.get('attachment')
         if not file or not file.filename:
             errors['attachment'] = 'File required'
         else:
-            # ✅ Check file extension
             ext = file.filename.split('.')[-1].lower()
             if ext not in ALLOWED:
                 errors['attachment'] = f'Invalid file type. Allowed: {", ".join(ALLOWED)}'
 
         if not errors:
-
-            # ✅ Get academic year from submitted form (semester-based)
-            semester = int(form['semester'])
+            semester       = int(form['semester'])
             submitted_year = SEMESTER_TO_YEAR.get(semester, None)
-
-            # ✅ Save file
-            ext = file.filename.split('.')[-1]
-            filename = f"{uuid.uuid4().hex}.{ext}"
+            ext            = file.filename.split('.')[-1]
+            filename       = f"{uuid.uuid4().hex}.{ext}"
             file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
 
-            # ✅ Create application
             application = RetestApplication(
-                student_id=current_user.id,
-                student_name=form['student_name'],
-                register_number=form['register_number'],
-                student_email=form['student_email'],
-                subject_id=int(form['subject_id']),
-                cia_number=int(form['cia_number']),
-                cia_date=datetime.strptime(form['cia_date'], '%Y-%m-%d').date(),
-                semester=semester,
-                staff_id=int(form['staff_id']),
-                tutor_id=int(form['tutor_id']),
-                reason_type=form['reason_type'],
-                reason_detail=form.get('reason_detail', ''),
-                submission_type=form['submission_type'],
-                attachment_filename=filename,
-                student_section=student_section,   # ✅ From user profile
-                student_year=submitted_year,       # ✅ NEW: From semester selection (not user.year)
-                submitted_at=datetime.utcnow()
+                student_id          = current_user.id,
+                student_name        = form['student_name'],
+                register_number     = form['register_number'],
+                student_email       = form['student_email'],
+                subject_id          = int(form['subject_id']),
+                cia_number          = int(form['cia_number']),
+                cia_date            = datetime.strptime(form['cia_date'], '%Y-%m-%d').date(),
+                semester            = semester,
+                staff_id            = int(form['staff_id']),
+                tutor_id            = int(form['tutor_id']),
+                reason_type         = form['reason_type'],
+                reason_detail       = form.get('reason_detail', ''),
+                submission_type     = form['submission_type'],
+                attachment_filename = filename,
+                student_section     = form.get('student_section') or student_section,
+                student_year        = submitted_year,
+                submitted_at        = datetime.utcnow()
             )
-
             db.session.add(application)
             db.session.commit()
-
             flash('Application submitted successfully', 'success')
             return redirect(url_for('user.dashboard'))
 
     return render_template(
         'user/apply.html',
         tutors=tutors,
+        auto_tutor=auto_tutor,
         form=form,
         errors=errors,
-        student_section=student_section,   # ✅ pass to template
+        student_section=student_section,
         student_year=student_year
     )
 
@@ -260,24 +263,33 @@ def view_attachment(app_id):
 
     application = RetestApplication.query.get_or_404(app_id)
 
-    allowed = False
-    if application.student_id == current_user.id:
-        allowed = True
-    elif current_user.role == 'admin':
-        allowed = True
-    elif current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff':
-        allowed = application.staff_id == current_user.id
-    elif current_user.role == 'tutor' or current_user.secondary_role == 'tutor':
-        allowed = application.tutor_id == current_user.id
-    elif current_user.role == 'coordinator' or current_user.secondary_role == 'coordinator':
-        allowed = application.submission_type == 'late'
-    elif current_user.role == 'hod' or current_user.secondary_role == 'hod':
-        allowed = True
+    allowed = (
+        application.student_id == current_user.id
+        or current_user.role == 'admin'
+        or current_user.role == 'hod'
+        or current_user.secondary_role == 'hod'
+        or ((current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff')
+            and application.staff_id == current_user.id)
+        or ((current_user.role == 'tutor' or current_user.secondary_role == 'tutor')
+            and application.tutor_id == current_user.id)
+        or ((current_user.role == 'coordinator' or current_user.secondary_role == 'coordinator')
+            and application.submission_type == 'late')
+    )
 
     if not allowed:
         abort(403)
 
+    filename = os.path.basename(application.attachment_filename or '')
+    if not filename:
+        abort(404)
+
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    file_path = os.path.join(upload_folder, filename)
+    if not os.path.exists(file_path):
+        abort(404)
+
     return send_from_directory(
-        current_app.config['UPLOAD_FOLDER'],
-        application.attachment_filename
+        upload_folder,
+        filename,
+        as_attachment=False
     )

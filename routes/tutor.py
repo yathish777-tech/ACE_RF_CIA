@@ -1,7 +1,7 @@
 import io
 from flask import Blueprint, render_template, redirect, url_for, flash, request, send_file
 from flask_login import login_required, current_user
-from models import db, RetestApplication
+from models import db, RetestApplication, SeatingAllotment, ExamAttendance
 from datetime import datetime
 from functools import wraps
 
@@ -169,3 +169,57 @@ def download_applications(fmt):
         return send_file(buf, as_attachment=True,
             download_name=f'tutor_applications{label}_{datetime.now().strftime("%Y%m%d")}.pdf',
             mimetype='application/pdf')
+
+
+# ─── RETRANSMIT (Tutor) ──────────────────────────────────────────────────────
+@tutor_bp.route('/applications/<int:app_id>/retransmit', methods=['POST'])
+@login_required
+@tutor_required
+def retransmit(app_id):
+    """Tutor can retransmit a mistakenly-rejected application from the rejected stage."""
+    app = RetestApplication.query.filter_by(
+        id=app_id, tutor_id=current_user.id).first_or_404()
+
+    if app.final_status != 'rejected':
+        flash('Only rejected applications can be retransmitted.', 'warning')
+        return redirect(url_for('tutor.dashboard'))
+
+    # Reset only the stage that was rejected
+    if app.hod_status == 'rejected':
+        app.hod_status = 'pending'; app.hod_remark = None; app.hod_action_time = None
+    elif app.coordinator_status == 'rejected':
+        app.coordinator_status = 'pending'; app.coordinator_remark = None; app.coordinator_action_time = None
+    elif app.tutor_status == 'rejected':
+        app.tutor_status = 'pending'; app.tutor_remark = None; app.tutor_action_time = None
+    elif app.staff_status == 'rejected':
+        app.staff_status = 'pending'; app.staff_remark = None; app.staff_action_time = None
+
+    app.final_status     = 'pending'
+    app.retransmit_count = (app.retransmit_count or 0) + 1
+    app.retransmit_by    = current_user.id
+    app.retransmit_at    = datetime.utcnow()
+    db.session.commit()
+    flash(f'Application #{app_id} retransmitted successfully.', 'success')
+    return redirect(url_for('tutor.dashboard'))
+
+
+# ─── MY HALLS (Tutor as invigilator) ────────────────────────────────────────
+@tutor_bp.route('/my-halls')
+@login_required
+@tutor_required
+def my_halls():
+    halls = SeatingAllotment.query.filter(
+        (SeatingAllotment.invigilator_id == None) | (SeatingAllotment.invigilator_id == current_user.id)
+    ).order_by(SeatingAllotment.hall_number).all()
+    hall_numbers = sorted({h.hall_number for h in halls})
+    hall_status = {}
+    for hn in hall_numbers:
+        rows   = SeatingAllotment.query.filter(
+            SeatingAllotment.hall_number == hn,
+            (SeatingAllotment.invigilator_id == None) | (SeatingAllotment.invigilator_id == current_user.id)
+        ).all()
+        total  = sum(len(r.get_register_numbers()) for r in rows)
+        marked = ExamAttendance.query.filter_by(hall_number=hn, marked_by=current_user.id).count()
+        hall_status[hn] = {'total': total, 'marked': marked}
+    return render_template('admin/my_halls.html',
+                           halls=halls, hall_numbers=hall_numbers, hall_status=hall_status)

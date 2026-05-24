@@ -1,6 +1,7 @@
 {% extends "dashboard_base.html" %}
 {% from "macros.html" import status_badge, type_badge %}
-{% block title %}Application #{{ app.id }}
+{% block title %}Application #{{ app.id }}{% endblock %}
+{#
 {% if app.final_status == 'rejected' %}
 <div style="margin-top:20px;padding:16px;background:#fff3e0;border-radius:10px;border-left:4px solid #f57c00;">
   <div style="font-weight:700;color:#e65100;margin-bottom:8px;">🔄 Retransmit Application</div>
@@ -16,7 +17,7 @@
 </div>
 {% endif %}
 
-{% endblock %}
+#}
 {% block page_title %}Application Detail{% endblock %}
 
 {% block sidebar_nav %}
@@ -30,6 +31,10 @@
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item {% if request.endpoint in ['admin.all_applications','admin.view_application'] %}active{% endif %}"><span class="nav-icon">📋</span> Applications</a>
 <a href="{{ url_for('admin.view_absentees') }}" class="nav-item {% if request.endpoint=='admin.view_absentees' %}active{% endif %}"><span class="nav-icon">🚫</span> Absentee Lists</a>
+<a href="{{ url_for('admin.view_absentees_subject') }}" class="nav-item {% if request.endpoint=='admin.view_absentees_subject' %}active{% endif %}"><span class="nav-icon">📖</span> Subject-wise Absent</a>
+<span class="nav-section-label" style="margin-top:10px;">Exam</span>
+<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item {% if request.endpoint=='admin.seating_allotment' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allotment</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item {% if request.endpoint=='admin.view_attendance' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance</a>
 {% endblock %}
 
 {% block content %}
@@ -44,6 +49,23 @@
     <a href="{{ url_for('admin.all_applications') }}" class="btn btn-outline btn-sm">← Back</a>
   </div>
 </div>
+
+{% if app.final_status == 'rejected' %}
+<div class="card mb-4" style="margin-bottom:20px;border-left:4px solid #f57c00;">
+  <div class="card-body">
+    <div style="font-weight:800;color:#e65100;margin-bottom:8px;">Retransmit Application</div>
+    <p style="font-size:13px;color:#374151;margin-bottom:12px;">
+      This application was rejected by
+      <strong>{% if app.staff_status=='rejected' %}Subject Staff{% elif app.tutor_status=='rejected' %}Tutor{% elif app.coordinator_status=='rejected' %}Coordinator{% else %}HOD{% endif %}</strong>.
+      Retransmitting will restart the approval from that rejected stage.
+    </p>
+    <form method="POST" action="{{ url_for('admin.retransmit', app_id=app.id) }}"
+          onsubmit="return confirm('Retransmit this application from the rejected stage?');">
+      <button type="submit" class="btn btn-warning">Retransmit Application</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div class="grid grid-2" style="gap:24px;">
   <div>

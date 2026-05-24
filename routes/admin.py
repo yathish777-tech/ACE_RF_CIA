@@ -2,7 +2,7 @@ import os, io, uuid
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
-from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection
+from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, SeatingAllotment, ExamAttendance
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -855,19 +855,32 @@ def download_absentees_cia(cia_num, fmt):
             mimetype='application/pdf')
 
 
+
 # ─── RETRANSMIT ───────────────────────────────────────────────────────────────
 @admin_bp.route('/applications/<int:app_id>/retransmit', methods=['POST'])
 @login_required
 def retransmit(app_id):
-    # ✅ Allow HOD or Admin only
-    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
-        flash('Access denied. Only HOD and Admin can retransmit applications.', 'danger')
+    # Allow the approval roles to restart a rejected application from the failed stage.
+    allowed = (current_user.role in ('admin', 'hod', 'tutor', 'subject_staff') or
+               current_user.secondary_role in ('hod', 'tutor', 'subject_staff'))
+    if not allowed:
+        flash('Access denied. Only approval staff can retransmit.', 'danger')
         return redirect(url_for('main.index'))
-    
+
     app = RetestApplication.query.get_or_404(app_id)
+    if (current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff') and app.staff_id != current_user.id:
+        flash('You can retransmit only applications assigned to you.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+
     if app.final_status != 'rejected':
         flash('Only rejected applications can be retransmitted.', 'warning')
+        if current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff':
+            return redirect(url_for('staff.dashboard'))
+        if current_user.role == 'tutor' or current_user.secondary_role == 'tutor':
+            return redirect(url_for('tutor.dashboard'))
         return redirect(url_for('admin.view_application', app_id=app_id))
+
+    # Reset only the rejected stage
     if app.hod_status == 'rejected':
         app.hod_status = 'pending'; app.hod_remark = None; app.hod_action_time = None
     elif app.coordinator_status == 'rejected':
@@ -876,13 +889,440 @@ def retransmit(app_id):
         app.tutor_status = 'pending'; app.tutor_remark = None; app.tutor_action_time = None
     elif app.staff_status == 'rejected':
         app.staff_status = 'pending'; app.staff_remark = None; app.staff_action_time = None
-    app.final_status = 'pending'
-    if hasattr(app, 'retransmit_count'):
-        app.retransmit_count = (getattr(app, 'retransmit_count', 0) or 0) + 1
-    if hasattr(app, 'retransmit_by'):
-        app.retransmit_by = current_user.id
-    if hasattr(app, 'retransmit_at'):
-        app.retransmit_at = datetime.utcnow()
+
+    app.final_status     = 'pending'
+    app.retransmit_count = (app.retransmit_count or 0) + 1
+    app.retransmit_by    = current_user.id
+    app.retransmit_at    = datetime.utcnow()
     db.session.commit()
-    flash(f'Application #{app_id} retransmitted.', 'success')
+    flash(f'Application #{app_id} retransmitted successfully.', 'success')
+
+    if current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff':
+        return redirect(url_for('staff.dashboard'))
+    if current_user.role == 'tutor' or current_user.secondary_role == 'tutor':
+        return redirect(url_for('tutor.dashboard'))
     return redirect(url_for('admin.view_application', app_id=app_id))
+
+
+# ─── HELPER ───────────────────────────────────────────────────────────────────
+def _expand_register_numbers(raw: str) -> list:
+    """
+    Expand register-number ranges and comma-separated lists.
+    E.g. '6176AC23UCS001-6176AC23UCS028' expands to individual reg nos.
+    Supports (No Numbers: 19) exclusion annotations.
+    """
+    import re
+    if not raw:
+        return []
+    excluded = set()
+    for match in re.finditer(r'\(No Numbers?:\s*(\d+)\)', raw, re.IGNORECASE):
+        excluded.add(int(match.group(1)))
+    raw = re.sub(r'\(No Numbers?:\s*\d+\)', '', raw, flags=re.IGNORECASE)
+    result = []
+    parts = re.split(r'[,\n]+', raw)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        range_match = re.match(r'^([A-Za-z0-9]+?)(\d+)\s*-\s*([A-Za-z0-9]+?)(\d+)$', part)
+        if range_match:
+            prefix1, start_str, prefix2, end_str = range_match.groups()
+            if prefix1 == prefix2:
+                width = len(start_str)
+                for n in range(int(start_str), int(end_str) + 1):
+                    if n not in excluded:
+                        result.append(f"{prefix1}{str(n).zfill(width)}")
+            else:
+                result.append(part)
+        else:
+            result.append(part)
+    return result
+
+
+# ─── SEATING ALLOTMENT ────────────────────────────────────────────────────────
+@admin_bp.route('/seating')
+@login_required
+def seating_allotment():
+    if not (current_user.role in ('admin', 'hod', 'coordinator') or
+            current_user.secondary_role in ('hod', 'coordinator')):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('main.index'))
+    allotments = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
+    all_staff  = User.query.filter(
+        User.role.in_(['subject_staff', 'tutor', 'hod', 'coordinator']),
+        User.is_active == True
+    ).order_by(User.name).all()
+    hall_map = {}
+    for a in allotments:
+        hall_map.setdefault(a.hall_number, []).append(a)
+    return render_template('admin/seating_allotment.html',
+                           allotments=allotments, hall_map=hall_map, all_staff=all_staff)
+
+
+@admin_bp.route('/seating/upload', methods=['POST'])
+@login_required
+def seating_upload():
+    if not (current_user.role in ('admin', 'hod', 'coordinator') or
+            current_user.secondary_role in ('hod', 'coordinator')):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('admin.seating_allotment'))
+
+    added = updated = 0
+    f = request.files.get('seating_file')
+    if f and f.filename:
+        ext = f.filename.rsplit('.', 1)[-1].lower()
+        if ext not in ('xlsx', 'xls', 'csv'):
+            flash('Only Excel/CSV files accepted.', 'danger')
+            return redirect(url_for('admin.seating_allotment'))
+        try:
+            import pandas as pd
+            df = pd.read_csv(f) if ext == 'csv' else pd.read_excel(f, dtype=str)
+            df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
+            for _, row in df.iterrows():
+                def v(*keys):
+                    for k in keys:
+                        val = row.get(k, '')
+                        if str(val).strip().lower() not in ('nan', 'none', ''):
+                            return str(val).strip()
+                    return ''
+                hall    = v('hall_number', 'hall_no', 'hall')
+                yr_str  = v('year', 'yr')
+                sec     = v('section', 'sec').upper()
+                reg_raw = v('register_numbers', 'register_number', 'reg_numbers', 'reg_nos')
+                num_s   = v('no_of_students', 'num_students', 'count')
+                tot_s   = v('total_no_of_students', 'total_students', 'total')
+                inv_em  = v('invigilator_email', 'invigilator', 'staff_email')
+                if not hall:
+                    continue
+                yr_int  = int(float(yr_str)) if yr_str else None
+                sec_val = sec if sec in ('A', 'B', 'C') else None
+                num_int = int(float(num_s)) if num_s else None
+                tot_int = int(float(tot_s)) if tot_s else None
+                reg_list = _expand_register_numbers(reg_raw)
+                inv_user = None
+                if inv_em:
+                    inv_user = User.query.filter(db.func.lower(User.email) == inv_em.lower()).first()
+                existing = SeatingAllotment.query.filter_by(
+                    hall_number=hall, year=yr_int, section=sec_val).first()
+                if existing:
+                    existing.set_register_numbers(reg_list)
+                    existing.num_students   = num_int or len(reg_list) or existing.num_students
+                    existing.total_students = tot_int or existing.total_students
+                    if inv_user:
+                        existing.invigilator_id = inv_user.id
+                    existing.uploaded_by = current_user.id
+                    existing.uploaded_at = datetime.utcnow()
+                    updated += 1
+                else:
+                    sa = SeatingAllotment(
+                        hall_number=hall, year=yr_int, section=sec_val,
+                        num_students=num_int or len(reg_list), total_students=tot_int,
+                        invigilator_id=inv_user.id if inv_user else None,
+                        uploaded_by=current_user.id)
+                    sa.set_register_numbers(reg_list)
+                    db.session.add(sa)
+                    added += 1
+            db.session.commit()
+            flash(f'Seating allotment uploaded: {added} new, {updated} updated.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Upload failed: {e}', 'danger')
+    elif request.form.get('hall_number'):
+        record_id = request.form.get('record_id')
+        hall = (request.form.get('hall_number') or '').strip()
+        student_count = request.form.get('student_count') or request.form.get('num_students')
+
+        if not hall:
+            flash('Hall number is required for manual entry.', 'danger')
+            return redirect(url_for('admin.seating_allotment'))
+
+        try:
+            student_count_int = int(student_count)
+        except (TypeError, ValueError):
+            flash('Number of students must be a valid number.', 'danger')
+            return redirect(url_for('admin.seating_allotment'))
+
+        if student_count_int < 1:
+            flash('Number of students must be at least 1.', 'danger')
+            return redirect(url_for('admin.seating_allotment'))
+
+        if record_id:
+            existing = SeatingAllotment.query.get(int(record_id)) if record_id.isdigit() else None
+            if not existing:
+                flash('Hall record not found.', 'danger')
+                return redirect(url_for('admin.seating_allotment'))
+            existing.hall_number = hall
+            existing.year = None
+            existing.section = None
+            existing.set_register_numbers([])
+            existing.num_students = student_count_int
+            existing.total_students = student_count_int
+            existing.uploaded_by = current_user.id
+            existing.uploaded_at = datetime.utcnow()
+            updated += 1
+        else:
+            existing = SeatingAllotment.query.filter_by(hall_number=hall).first()
+            if existing:
+                existing.year = None
+                existing.section = None
+                existing.set_register_numbers([])
+                existing.num_students = student_count_int
+                existing.total_students = student_count_int
+                existing.uploaded_by = current_user.id
+                existing.uploaded_at = datetime.utcnow()
+                updated += 1
+            else:
+                sa = SeatingAllotment(
+                    hall_number=hall,
+                    year=None,
+                    section=None,
+                    num_students=student_count_int,
+                    total_students=student_count_int,
+                    uploaded_by=current_user.id
+                )
+                sa.set_register_numbers([])
+                db.session.add(sa)
+                added += 1
+        db.session.commit()
+        flash(f'Hall entry saved: {added} new, {updated} updated.', 'success')
+    else:
+        flash('Please upload a seating file or submit manual hall details.', 'danger')
+    return redirect(url_for('admin.seating_allotment'))
+
+
+@admin_bp.route('/seating/<int:sa_id>/get')
+@login_required
+def get_seating_entry(sa_id):
+    if not (current_user.role in ('admin', 'hod', 'coordinator') or
+            current_user.secondary_role in ('hod', 'coordinator')):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('admin.seating_allotment'))
+    sa = SeatingAllotment.query.get_or_404(sa_id)
+    return jsonify({
+        'id': sa.id,
+        'hall_number': sa.hall_number,
+        'year': sa.year,
+        'section': sa.section,
+        'register_numbers': sa.get_register_numbers(),
+        'num_students': sa.num_students,
+        'total_students': sa.total_students
+    })
+
+
+@admin_bp.route('/seating/<int:sa_id>/assign', methods=['POST'])
+@login_required
+def assign_invigilator(sa_id):
+    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('admin.seating_allotment'))
+    sa = SeatingAllotment.query.get_or_404(sa_id)
+    sa.invigilator_id = request.form.get('invigilator_id', type=int) or None
+    db.session.commit()
+    flash('Invigilator assigned.', 'success')
+    return redirect(url_for('admin.seating_allotment'))
+
+
+@admin_bp.route('/seating/<int:sa_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_seating(sa_id):
+    sa = SeatingAllotment.query.get_or_404(sa_id)
+    db.session.delete(sa)
+    db.session.commit()
+    flash('Seating row deleted.', 'success')
+    return redirect(url_for('admin.seating_allotment'))
+
+
+# ─── ATTENDANCE ENTRY (invigilator / staff) ───────────────────────────────────
+@admin_bp.route('/attendance/mark/<string:hall_number>')
+@login_required
+def mark_attendance_page(hall_number):
+    allotments = SeatingAllotment.query.filter_by(hall_number=hall_number).order_by(
+        SeatingAllotment.year, SeatingAllotment.section).all()
+    if not allotments:
+        flash('No seating data found for this hall.', 'warning')
+        return redirect(url_for('main.index'))
+    can_access = (
+        current_user.role in ('admin', 'hod', 'coordinator', 'tutor', 'subject_staff') or
+        current_user.secondary_role in ('hod', 'coordinator', 'tutor', 'subject_staff')
+    )
+    if not can_access:
+        flash('You do not have access to mark halls.', 'danger')
+        return redirect(url_for('main.index'))
+    seating = allotments[0]
+    student_rows = []
+    attendance_rows = ExamAttendance.query.filter_by(hall_number=hall_number).order_by(
+        ExamAttendance.year, ExamAttendance.section, ExamAttendance.register_number).all()
+    for att in attendance_rows:
+        student_rows.append({
+            'seating_id': att.seating_id,
+            'register_number': att.register_number,
+            'year': att.year,
+            'section': att.section,
+            'status': att.status,
+            'marked': True,
+        })
+    return render_template('admin/mark_attendance.html',
+                           hall_number=hall_number,
+                           allotments=allotments,
+                           seating=seating,
+                           student_rows=student_rows)
+
+
+@admin_bp.route('/attendance/mark/<string:hall_number>/submit', methods=['POST'])
+@login_required
+def submit_attendance(hall_number):
+    allotments = SeatingAllotment.query.filter_by(hall_number=hall_number).all()
+    can_access = (
+        current_user.role in ('admin', 'hod', 'coordinator', 'tutor', 'subject_staff') or
+        current_user.secondary_role in ('hod', 'coordinator', 'tutor', 'subject_staff')
+    )
+    if not can_access:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('main.index'))
+    if not allotments:
+        flash('No seating data found for this hall.', 'warning')
+        return redirect(url_for('main.index'))
+
+    seating = allotments[0]
+    saved = 0
+    submitted_regs = set()
+    reg_numbers = request.form.getlist('register_number[]')
+    years = request.form.getlist('year[]')
+    sections = request.form.getlist('section[]')
+    statuses = request.form.getlist('status[]')
+
+    for idx, reg in enumerate(reg_numbers):
+        reg = (reg or '').strip().upper()
+        if not reg:
+            continue
+        year_raw = years[idx] if idx < len(years) else ''
+        section = (sections[idx] if idx < len(sections) else '').strip().upper()
+        status_raw = statuses[idx] if idx < len(statuses) else 'present'
+        try:
+            year = int(year_raw) if year_raw else None
+        except ValueError:
+            year = None
+        if section not in ('A', 'B', 'C', 'D', 'E'):
+            section = None
+        status = 'absent' if status_raw == 'absent' else 'present'
+        submitted_regs.add(reg)
+        att = ExamAttendance.query.filter_by(seating_id=seating.id, register_number=reg).first()
+        if att:
+            att.year = year
+            att.section = section
+            att.status = status
+            att.marked_by = current_user.id
+            att.marked_at = datetime.utcnow()
+        else:
+            att = ExamAttendance(
+                seating_id=seating.id, hall_number=seating.hall_number,
+                register_number=reg, year=year, section=section,
+                status=status, marked_by=current_user.id)
+            db.session.add(att)
+        saved += 1
+
+    existing_records = ExamAttendance.query.filter_by(seating_id=seating.id).all()
+    for record in existing_records:
+        if record.register_number not in submitted_regs:
+            db.session.delete(record)
+
+    db.session.commit()
+    flash(f'Attendance saved for hall {hall_number} ({saved} students).', 'success')
+    is_adm_hod = (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod')
+    if is_adm_hod:
+        return redirect(url_for('admin.view_attendance'))
+    return redirect(url_for('admin.mark_attendance_page', hall_number=hall_number))
+
+
+# ─── ATTENDANCE OVERVIEW (admin/HOD) ─────────────────────────────────────────
+@admin_bp.route('/attendance')
+@login_required
+def view_attendance():
+    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('main.index'))
+    hall_filter    = request.args.get('hall', '')
+    section_filter = request.args.get('section', '')
+    year_filter    = request.args.get('year', type=int)
+    query = ExamAttendance.query
+    if hall_filter:    query = query.filter_by(hall_number=hall_filter)
+    if section_filter: query = query.filter_by(section=section_filter)
+    if year_filter:    query = query.filter_by(year=year_filter)
+    records   = query.order_by(ExamAttendance.hall_number, ExamAttendance.register_number).all()
+    all_halls = [h[0] for h in db.session.query(ExamAttendance.hall_number).distinct().all()]
+    hall_summary = {}
+    for h in all_halls:
+        hrs = ExamAttendance.query.filter_by(hall_number=h)
+        hall_summary[h] = {
+            'total':   hrs.count(),
+            'present': hrs.filter_by(status='present').count(),
+            'absent':  hrs.filter_by(status='absent').count(),
+        }
+    ys_summary = {}
+    for yr in range(1, 5):
+        ys_summary[yr] = {}
+        for sec in SECTIONS:
+            recs = ExamAttendance.query.filter_by(year=yr, section=sec)
+            ys_summary[yr][sec] = {
+                'total':   recs.count(),
+                'present': recs.filter_by(status='present').count(),
+                'absent':  recs.filter_by(status='absent').count(),
+            }
+    return render_template('admin/attendance.html',
+                           records=records, hall_summary=hall_summary,
+                           ys_summary=ys_summary, all_halls=all_halls,
+                           hall_filter=hall_filter, section_filter=section_filter,
+                           year_filter=year_filter, sections=SECTIONS)
+
+
+# ─── MY HALLS (invigilator) ──────────────────────────────────────────────────
+@admin_bp.route('/my-halls')
+@login_required
+def my_halls():
+    can_view_all = (
+        current_user.role in ('admin', 'hod', 'coordinator', 'tutor', 'subject_staff') or
+        current_user.secondary_role in ('hod', 'coordinator', 'tutor', 'subject_staff')
+    )
+    if can_view_all:
+        halls = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
+    else:
+        halls = SeatingAllotment.query.filter_by(
+            invigilator_id=current_user.id).order_by(SeatingAllotment.hall_number).all()
+    hall_numbers = list({h.hall_number for h in halls})
+    hall_status = {}
+    for hn in hall_numbers:
+        rows = SeatingAllotment.query.filter_by(hall_number=hn).all()
+        total = sum((r.total_students or r.num_students or len(r.get_register_numbers())) for r in rows)
+        marked = ExamAttendance.query.filter_by(hall_number=hn).count()
+        hall_status[hn] = {'total': total, 'marked': marked}
+    return render_template('admin/my_halls.html',
+                           halls=halls, hall_numbers=hall_numbers, hall_status=hall_status)
+
+
+# ─── SUBJECT-WISE ABSENTEES (admin view) ─────────────────────────────────────
+@admin_bp.route('/absentees/subject-wise')
+@login_required
+def view_absentees_subject():
+    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('main.index'))
+    cia_filter     = request.args.get('cia', type=int)
+    section_filter = request.args.get('section', '')
+    query = AbsenceRecord.query
+    if cia_filter:
+        query = query.filter_by(cia_number=cia_filter)
+    records = query.order_by(AbsenceRecord.cia_number, AbsenceRecord.subject_id).all()
+    tree = {}
+    for rec in records:
+        uploader = rec.uploader
+        section  = uploader.handling_section if uploader else '?'
+        if section_filter and section != section_filter:
+            continue
+        key = (rec.subject.subject_name, rec.subject.subject_code)
+        tree.setdefault(key, {}).setdefault(rec.cia_number, []).append({
+            'rec': rec, 'section': section, 'count': len(rec.get_students())
+        })
+    return render_template('admin/absentees_subject.html',
+                           tree=tree, cia_filter=cia_filter,
+                           section_filter=section_filter, sections=SECTIONS)
