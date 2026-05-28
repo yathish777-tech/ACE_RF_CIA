@@ -1,0 +1,224 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Student Registry{% endblock %}
+{% block page_title %}Student Registry{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint=='admin.dashboard' %}active{% endif %}"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item {% if request.endpoint=='admin.bulk_upload' %}active{% endif %}"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_students') }}" class="nav-item active"><span class="nav-icon">🎓</span> Students</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item {% if request.endpoint=='admin.manage_staff' %}active{% endif %}"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item {% if request.endpoint=='admin.manage_subjects' %}active{% endif %}"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item {% if request.endpoint=='admin.manage_cia_dates' %}active{% endif %}"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item {% if request.endpoint in ['admin.all_applications','admin.view_application'] %}active{% endif %}"><span class="nav-icon">📋</span> Applications</a>
+<span class="nav-section-label" style="margin-top:10px;">Exam</span>
+<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item {% if request.endpoint=='admin.seating_allotment' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allotment</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item {% if request.endpoint=='admin.view_attendance' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Student Registry</h2>
+    <p>Upload or edit the official register number list by year and section.</p>
+  </div>
+  <button type="button" onclick="resetStudentForm()" class="btn btn-primary">+ Add Student</button>
+</div>
+
+<div class="stats-grid" style="margin-bottom:24px;">
+  <div class="stat-card blue">
+    <div class="stat-info"><div class="stat-value">{{ total_students }}</div><div class="stat-label">Total Students</div></div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-info"><div class="stat-value">{{ active_students }}</div><div class="stat-label">Active Students</div></div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-info"><div class="stat-value">{{ students|length }}</div><div class="stat-label">Current View</div></div>
+  </div>
+</div>
+
+<div class="grid grid-2" style="gap:20px;margin-bottom:24px;">
+  <div class="card">
+    <div class="card-header"><h3>Upload Student Details</h3></div>
+    <div class="card-body">
+      <div style="padding:10px 12px;background:#f0f4ff;border-radius:8px;border-left:3px solid #1a237e;margin-bottom:14px;font-size:12px;color:#374151;">
+        Required columns: <code>register_number</code>, <code>name</code>, <code>email</code> (or <code>email_id</code>), <code>section</code>, <code>year</code>.
+        Optional: <code>phone</code>.
+      </div>
+      <div style="overflow-x:auto;margin-bottom:14px;">
+        <table style="font-size:11px;">
+          <thead><tr><th>register_number</th><th>name</th><th>email</th><th>section</th><th>year</th></tr></thead>
+          <tbody><tr><td>2403617610421114</td><td>Arun Kumar</td><td>arun@example.com</td><td>A</td><td>2</td></tr></tbody>
+        </table>
+      </div>
+      <form method="POST" action="{{ url_for('admin.upload_students') }}" enctype="multipart/form-data" id="studentUploadForm">
+        <div class="form-group">
+          <label class="form-label">Excel / CSV File <span class="required">*</span></label>
+          <input type="file" name="student_file" class="form-control" accept=".xlsx,.xls,.csv" required>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Upload Students</button>
+      </form>
+      <p class="text-muted" style="margin-top:10px;">New upload-created accounts use password <strong>{{ default_password }}</strong>.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3 id="studentFormTitle">Manual Student Entry</h3></div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('admin.save_student') }}" id="studentForm">
+        <input type="hidden" name="student_id" id="studentId">
+        <div class="grid grid-2" style="gap:14px;">
+          <div class="form-group">
+            <label class="form-label">Register Number <span class="required">*</span></label>
+            <input type="text" name="register_number" id="registerNumber" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Student Name <span class="required">*</span></label>
+            <input type="text" name="name" id="studentName" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Year <span class="required">*</span></label>
+            <select name="year" id="studentYear" class="form-control" required>
+              <option value="">Select Year</option>
+              {% for y in range(1,5) %}<option value="{{ y }}">Year {{ y }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Section <span class="required">*</span></label>
+            <select name="section" id="studentSection" class="form-control" required>
+              <option value="">Select Section</option>
+              {% for s in sections %}<option value="{{ s }}">Section {{ s }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" id="studentEmail" class="form-control" placeholder="Optional">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" id="studentPhone" class="form-control" placeholder="Optional">
+          </div>
+          <div class="form-group" style="grid-column:1 / -1;">
+            <label class="form-label">Password <span style="color:#9ca3af;font-size:11px;">(blank keeps current while editing)</span></label>
+            <input type="text" name="password" id="studentPassword" class="form-control" placeholder="{{ default_password }}">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button type="button" onclick="resetStudentForm()" class="btn btn-outline">Clear</button>
+          <button type="submit" class="btn btn-primary">Save Student</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-body" style="padding:16px;">
+    <form method="GET" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label class="form-label" style="font-size:12px;">Search</label>
+        <input type="text" name="q" value="{{ search }}" class="form-control" style="min-width:220px;" placeholder="Name / register / email">
+      </div>
+      <div>
+        <label class="form-label" style="font-size:12px;">Year</label>
+        <select name="year" class="form-control">
+          <option value="">All Years</option>
+          {% for y in range(1,5) %}<option value="{{ y }}" {% if year_filter == y %}selected{% endif %}>Year {{ y }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" style="font-size:12px;">Section</label>
+        <select name="section" class="form-control">
+          <option value="">All Sections</option>
+          {% for s in sections %}<option value="{{ s }}" {% if section_filter == s %}selected{% endif %}>Section {{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+      <a href="{{ url_for('admin.manage_students') }}" class="btn btn-outline btn-sm">Clear</a>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Students ({{ students|length }})</h3></div>
+  {% if students %}
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Register No.</th><th>Name</th><th>Year</th><th>Section</th><th>Email</th><th>Status</th><th style="text-align:right;">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td style="font-family:monospace;font-weight:700;color:#1a237e;">{{ s.register_number }}</td>
+          <td><div class="fw-bold">{{ s.name }}</div>{% if s.phone %}<div class="text-muted">{{ s.phone }}</div>{% endif %}</td>
+          <td>Year {{ s.year or '-' }}</td>
+          <td><span class="badge badge-primary">Section {{ s.section or '-' }}</span></td>
+          <td style="font-size:12px;">{{ s.email }}</td>
+          <td>{% if s.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</td>
+          <td style="text-align:right;">
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+              <button type="button" class="btn btn-outline btn-sm"
+                      data-student='{{ {"id": s.id, "register_number": s.register_number, "name": s.name, "year": s.year, "section": s.section, "email": s.email, "phone": s.phone or ""}|tojson }}'
+                      onclick="editStudent(this)">Edit</button>
+              <form method="POST" action="{{ url_for('admin.toggle_student', uid=s.id) }}">
+                <button type="submit" class="btn btn-sm {{ 'btn-warning' if s.is_active else 'btn-success' }}">
+                  {{ 'Deactivate' if s.is_active else 'Activate' }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:48px 24px;">
+    <div class="icon">🎓</div>
+    <h4>No Students Found</h4>
+    <p>Upload a student file or add a student manually.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function resetStudentForm() {
+  document.getElementById('studentFormTitle').textContent = 'Manual Student Entry';
+  document.getElementById('studentId').value = '';
+  document.getElementById('registerNumber').value = '';
+  document.getElementById('studentName').value = '';
+  document.getElementById('studentYear').value = '';
+  document.getElementById('studentSection').value = '';
+  document.getElementById('studentEmail').value = '';
+  document.getElementById('studentPhone').value = '';
+  document.getElementById('studentPassword').value = '';
+  document.getElementById('registerNumber').focus();
+}
+
+function editStudent(button) {
+  const data = JSON.parse(button.dataset.student);
+  document.getElementById('studentFormTitle').textContent = 'Edit Student';
+  document.getElementById('studentId').value = data.id || '';
+  document.getElementById('registerNumber').value = data.register_number || '';
+  document.getElementById('studentName').value = data.name || '';
+  document.getElementById('studentYear').value = data.year || '';
+  document.getElementById('studentSection').value = data.section || '';
+  document.getElementById('studentEmail').value = data.email || '';
+  document.getElementById('studentPhone').value = data.phone || '';
+  document.getElementById('studentPassword').value = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.getElementById('studentUploadForm').addEventListener('submit', function() {
+  const button = this.querySelector('button[type="submit"]');
+  button.textContent = 'Uploading...';
+  button.disabled = true;
+});
+</script>
+{% endblock %}

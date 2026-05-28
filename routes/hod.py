@@ -36,28 +36,43 @@ def _get_year_section_stats():
     return stats
 
 
+def _get_year_stats():
+    apps = RetestApplication.query.all()
+    stats = {}
+    for year in range(1, 5):
+        year_apps = [a for a in apps if a.student_year == year]
+        stats[year] = {
+            'total': len(year_apps),
+            'approved': sum(1 for a in year_apps if a.final_status == 'approved'),
+            'rejected': sum(1 for a in year_apps if a.final_status == 'rejected'),
+            'pending': sum(1 for a in year_apps if a.final_status == 'pending'),
+            'apps': year_apps
+        }
+    return stats
+
+
 @hod_bp.route('/dashboard')
 @login_required
 @hod_required
 def dashboard():
-    year_filter    = request.args.get('year', type=int)
-    section_filter = request.args.get('section', '')
+    year_filter = request.args.get('year', type=int)
 
-    pending_pre  = RetestApplication.query.filter_by(
+    pending_pre_q = RetestApplication.query.filter_by(
         submission_type='pre', staff_status='approved',
-        tutor_status='approved', hod_status='pending', final_status='pending').all()
-    pending_late = RetestApplication.query.filter_by(
+        tutor_status='approved', hod_status='pending', final_status='pending')
+    pending_late_q = RetestApplication.query.filter_by(
         submission_type='late', staff_status='approved', tutor_status='approved',
-        coordinator_status='approved', hod_status='pending', final_status='pending').all()
-    pending = pending_pre + pending_late
-
-    # Apply year/section filter to reviewed
+        coordinator_status='approved', hod_status='pending', final_status='pending')
     reviewed_q = RetestApplication.query.filter(
         RetestApplication.hod_status.in_(['approved','rejected']))
     if year_filter:
+        pending_pre_q = pending_pre_q.filter_by(student_year=year_filter)
+        pending_late_q = pending_late_q.filter_by(student_year=year_filter)
         reviewed_q = reviewed_q.filter_by(student_year=year_filter)
-    if section_filter:
-        reviewed_q = reviewed_q.filter_by(student_section=section_filter)
+
+    pending_pre = pending_pre_q.order_by(RetestApplication.submitted_at.desc()).all()
+    pending_late = pending_late_q.order_by(RetestApplication.submitted_at.desc()).all()
+    pending = pending_pre + pending_late
     reviewed = reviewed_q.order_by(RetestApplication.hod_action_time.desc()).all()
 
     upcoming_dates = CIADate.query.filter(
@@ -65,7 +80,7 @@ def dashboard():
     ).order_by(CIADate.application_end_date).limit(5).all()
     all_cia = CIADate.query.order_by(CIADate.exam_date.desc()).all()
 
-    year_section_stats = _get_year_section_stats()
+    year_stats = _get_year_stats()
 
     stats = {
         'pending': len(pending),
@@ -76,9 +91,8 @@ def dashboard():
     return render_template('hod/dashboard.html',
                            pending=pending, reviewed=reviewed, stats=stats,
                            upcoming_dates=upcoming_dates, all_cia=all_cia,
-                           today=date.today(), year_section_stats=year_section_stats,
-                           sections=SECTIONS, year_filter=year_filter,
-                           section_filter=section_filter)
+                           today=date.today(), year_stats=year_stats,
+                           year_filter=year_filter)
 
 
 @hod_bp.route('/action/<int:app_id>', methods=['POST'])
@@ -152,26 +166,21 @@ def toggle_window(cid):
 @login_required
 @hod_required
 def download_applications(fmt):
-    year_filter    = request.args.get('year', type=int)
-    section_filter = request.args.get('section', '')
+    year_filter = request.args.get('year', type=int)
     query = RetestApplication.query
     if year_filter:
         query = query.filter_by(student_year=year_filter)
-    if section_filter:
-        query = query.filter_by(student_section=section_filter)
     apps = query.order_by(RetestApplication.submitted_at.desc()).all()
 
     rows = [{'ID': a.id, 'Student': a.student_name, 'Reg No': a.register_number,
              'Year': a.student_year or '', 'Section': a.student_section or '',
              'Subject': a.subject.subject_name, 'Semester': a.semester,
              'CIA No': a.cia_number, 'Type': a.submission_type.upper(),
-             'Staff': a.staff_status, 'Tutor': a.tutor_status,
-             'HOD': a.hod_status, 'Final': a.final_status,
+             'Final Status': a.final_status,
              'Submitted': a.submitted_at.strftime('%d %b %Y %H:%M')} for a in apps]
 
     label = ''
     if year_filter: label += f'_Year{year_filter}'
-    if section_filter: label += f'_Sec{section_filter}'
 
     if fmt == 'excel':
         import openpyxl
@@ -187,8 +196,8 @@ def download_applications(fmt):
             for ri, row in enumerate(rows, 2):
                 for ci, v in enumerate(row.values(), 1):
                     ws.cell(ri, ci, v)
-                bg = ('E8F5E9' if row['Final'] == 'approved' else
-                      'FFEBEE' if row['Final'] == 'rejected' else 'FFFFFF')
+                bg = ('E8F5E9' if row['Final Status'] == 'approved' else
+                      'FFEBEE' if row['Final Status'] == 'rejected' else 'FFFFFF')
                 for ci in range(1, len(hdrs)+1):
                     ws.cell(ri, ci).fill = PatternFill('solid', fgColor=bg)
             for col in ws.columns:
@@ -208,18 +217,16 @@ def download_applications(fmt):
         styles = getSampleStyleSheet()
         title_str = 'HOD — CIA Retest Applications'
         if year_filter: title_str += f' | Year {year_filter}'
-        if section_filter: title_str += f' | Section {section_filter}'
         els = [Paragraph(title_str, styles['Title']),
                Paragraph(f'Generated: {datetime.now().strftime("%d %b %Y %H:%M")}',
                          styles['Normal']), Spacer(1, 12)]
         if rows:
-            hdrs = ['#', 'Student', 'Reg No', 'Yr', 'Sec', 'Subject', 'Sem', 'CIA', 'Type', 'Staff', 'Tutor', 'HOD', 'Final']
+            hdrs = ['#', 'Student', 'Reg No', 'Yr', 'Sec', 'Subject', 'Sem', 'CIA', 'Type', 'Final Status']
             td = [hdrs] + [[str(r['ID']), r['Student'][:14], r['Reg No'],
                              str(r['Year']), str(r['Section']),
                              r['Subject'][:14], str(r['Semester']),
                              str(r['CIA No']), r['Type'],
-                             r['Staff'].upper(), r['Tutor'].upper(),
-                             r['HOD'].upper(), r['Final'].upper()] for r in rows]
+                             r['Final Status'].upper()] for r in rows]
             t = Table(td, repeatRows=1)
             t.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1A237E')),

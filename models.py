@@ -335,6 +335,7 @@ class SeatingAllotment(db.Model):
 
     id           = db.Column(db.Integer, primary_key=True)
     hall_number  = db.Column(db.String(30),  nullable=False)   # e.g. CSCR107
+    exam_date    = db.Column(db.Date,        nullable=True)
     year         = db.Column(db.Integer,     nullable=True)    # 1-4
     section      = db.Column(db.String(5),   nullable=True)    # A / B / C
     # Register numbers stored as JSON list ["6176AC22UCS022","6176AC22UCS105",...]
@@ -381,6 +382,7 @@ class ExamAttendance(db.Model):
                                   db.ForeignKey('seating_allotment.id', ondelete='CASCADE'),
                                   nullable=False)
     hall_number      = db.Column(db.String(30),  nullable=False)
+    exam_date        = db.Column(db.Date,         nullable=True)
     register_number  = db.Column(db.String(30),  nullable=False)
     year             = db.Column(db.Integer,      nullable=True)
     section          = db.Column(db.String(5),    nullable=True)

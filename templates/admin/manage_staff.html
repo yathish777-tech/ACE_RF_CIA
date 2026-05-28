@@ -7,13 +7,12 @@
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint=='admin.dashboard' %}active{% endif %}"><span class="nav-icon">📊</span> Dashboard</a>
 <span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
 <a href="{{ url_for('admin.bulk_upload') }}" class="nav-item {% if request.endpoint=='admin.bulk_upload' %}active{% endif %}"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_students') }}" class="nav-item {% if request.endpoint=='admin.manage_students' %}active{% endif %}"><span class="nav-icon">🎓</span> Students</a>
 <a href="{{ url_for('admin.manage_staff') }}" class="nav-item {% if request.endpoint=='admin.manage_staff' %}active{% endif %}"><span class="nav-icon">👥</span> Manage Staff</a>
 <a href="{{ url_for('admin.manage_subjects') }}" class="nav-item {% if request.endpoint=='admin.manage_subjects' %}active{% endif %}"><span class="nav-icon">📚</span> Subjects</a>
 <a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item {% if request.endpoint=='admin.manage_cia_dates' %}active{% endif %}"><span class="nav-icon">📅</span> CIA Dates</a>
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item {% if request.endpoint in ['admin.all_applications','admin.view_application'] %}active{% endif %}"><span class="nav-icon">📋</span> Applications</a>
-<a href="{{ url_for('admin.view_absentees') }}" class="nav-item {% if request.endpoint=='admin.view_absentees' %}active{% endif %}"><span class="nav-icon">🚫</span> Absentee Lists</a>
-<a href="{{ url_for('admin.view_absentees_subject') }}" class="nav-item {% if request.endpoint=='admin.view_absentees_subject' %}active{% endif %}"><span class="nav-icon">📖</span> Subject-wise Absent</a>
 <span class="nav-section-label" style="margin-top:10px;">Exam</span>
 <a href="{{ url_for('admin.seating_allotment') }}" class="nav-item {% if request.endpoint=='admin.seating_allotment' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allotment</a>
 <a href="{{ url_for('admin.view_attendance') }}" class="nav-item {% if request.endpoint=='admin.view_attendance' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance</a>
@@ -46,7 +45,7 @@
   <div class="table-wrapper">
     <table>
       <thead>
-        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Class</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for s in staff_list %}
@@ -72,10 +71,17 @@
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td style="font-size:12px;">{{ s.department or '—' }}</td>
+          <td style="font-size:12px;">
+            {% if s.handling_year and s.handling_section %}
+              Year {{ s.handling_year }} / Section {{ s.handling_section }}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
           <td>{% if s.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
-              <button onclick="openEditModal({{ s.id }},'{{ s.name }}','{{ s.phone or '' }}','{{ s.department or '' }}','{{ s.secondary_role or '' }}')" class="btn btn-outline btn-sm">Edit</button>
+              <button onclick="openEditModal({{ s.id }},'{{ s.name }}','{{ s.phone or '' }}','{{ s.department or '' }}','{{ s.secondary_role or '' }}','{{ s.handling_year or '' }}','{{ s.handling_section or '' }}')" class="btn btn-outline btn-sm">Edit</button>
               <form method="POST" action="{{ url_for('admin.toggle_staff', uid=s.id) }}" style="display:inline;">
                 <button type="submit" class="btn btn-sm {{ 'btn-warning' if s.is_active else 'btn-success' }}">
                   {{ '🔒' if s.is_active else '🔓' }}
@@ -137,6 +143,20 @@
             <option>Electronics</option><option>Mechanical</option><option>Civil</option><option>EEE</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Handling Year</label>
+          <select name="handling_year" class="form-control">
+            <option value="">Select Year</option>
+            {% for y in range(1,5) %}<option value="{{ y }}">Year {{ y }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handling Section</label>
+          <select name="handling_section" class="form-control">
+            <option value="">Select Section</option>
+            {% for s in ['A','B','C'] %}<option value="{{ s }}">Section {{ s }}</option>{% endfor %}
+          </select>
+        </div>
         <div class="form-group" style="grid-column:span 2;">
           <label class="form-label">Login Password</label>
           <input type="text" name="password" class="form-control" value="staff123">
@@ -171,6 +191,22 @@
           <option value="coordinator">Dept. Coordinator</option>
         </select>
       </div>
+      <div class="grid grid-2" style="gap:14px;">
+        <div class="form-group">
+          <label class="form-label">Handling Year</label>
+          <select name="handling_year" id="editHandlingYear" class="form-control">
+            <option value="">Select Year</option>
+            {% for y in range(1,5) %}<option value="{{ y }}">Year {{ y }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handling Section</label>
+          <select name="handling_section" id="editHandlingSection" class="form-control">
+            <option value="">Select Section</option>
+            {% for s in ['A','B','C'] %}<option value="{{ s }}">Section {{ s }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
       <div class="form-group"><label class="form-label">New Password <span style="color:#9ca3af;font-size:11px;">(blank = keep current)</span></label><input type="text" name="password" class="form-control" placeholder="Leave blank to keep"></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
         <button type="button" onclick="closeModal('editStaffModal')" class="btn btn-outline">Cancel</button>
@@ -183,11 +219,13 @@
 
 {% block scripts %}
 <script>
-function openEditModal(uid, name, phone, dept, secRole) {
+function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSection) {
   document.getElementById('editName').value    = name;
   document.getElementById('editPhone').value   = phone;
   document.getElementById('editDept').value    = dept;
   document.getElementById('editSecRole').value = secRole;
+  document.getElementById('editHandlingYear').value = handlingYear;
+  document.getElementById('editHandlingSection').value = handlingSection;
   document.getElementById('editForm').action   = `/admin/staff/edit/${uid}`;
   openModal('editStaffModal');
 }

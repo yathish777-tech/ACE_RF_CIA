@@ -1,11 +1,12 @@
 {% extends "dashboard_base.html" %}
-{% block title %}Hall {{ hall_number }} Entry{% endblock %}
-{% block page_title %}Hall Entry{% endblock %}
+{% block title %}Hall {{ hall_number }} Absentees{% endblock %}
+{% block page_title %}Hall Absentee Entry{% endblock %}
 
 {% block sidebar_nav %}
 <span class="nav-section-label">Navigation</span>
 {% if current_user.role == 'admin' or current_user.secondary_role == 'admin' %}
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Admin Dashboard</a>
+<a href="{{ url_for('admin.manage_students') }}" class="nav-item"><span class="nav-icon">🎓</span> Students</a>
 <a href="{{ url_for('admin.seating_allotment') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allotment</a>
 <a href="{{ url_for('admin.view_attendance') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Overview</a>
 {% elif current_user.role == 'tutor' or current_user.secondary_role == 'tutor' %}
@@ -23,34 +24,34 @@
 <div class="page-header">
   <div>
     <h2>Hall {{ hall_number }}</h2>
-    <p>Enter register number, year, section, and present/absent status manually.</p>
+    <p>Tick only absent students. All unmarked allotted students will be saved as present.</p>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <span class="badge badge-primary">{{ seating.total_students or seating.num_students or 0 }} students planned</span>
+    <span class="badge badge-primary">{{ planned_count }} allotted</span>
     <a href="javascript:history.back()" class="btn btn-outline btn-sm">Back</a>
   </div>
 </div>
 
 <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+  <div class="stat-card blue" style="min-width:180px;margin:0;">
+    <div class="stat-info"><div class="stat-value" id="totalCount">{{ student_rows|length }}</div><div class="stat-label">Allotted</div></div>
+  </div>
   <div class="stat-card green" style="min-width:180px;margin:0;">
     <div class="stat-info"><div class="stat-value" id="presentCount">0</div><div class="stat-label">Present</div></div>
   </div>
   <div class="stat-card red" style="min-width:180px;margin:0;">
     <div class="stat-info"><div class="stat-value" id="absentCount">0</div><div class="stat-label">Absent</div></div>
   </div>
-  <div class="stat-card blue" style="min-width:180px;margin:0;">
-    <div class="stat-info"><div class="stat-value" id="enteredCount">0</div><div class="stat-label">Entered</div></div>
-  </div>
 </div>
 
+{% if student_rows %}
 <form method="POST" action="{{ url_for('admin.submit_attendance', hall_number=hall_number) }}" id="attendanceForm">
   <div class="card">
     <div class="card-header">
-      <h3>Student Manual Entry</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" onclick="addRow()" class="btn btn-outline btn-sm">Add Row</button>
-        <button type="button" onclick="markAll('present')" class="btn btn-success btn-sm">All Present</button>
-        <button type="button" onclick="markAll('absent')" class="btn btn-danger btn-sm">All Absent</button>
+      <h3>Allotted Students</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="studentSearch" class="form-control" style="width:260px;padding:7px 10px;font-size:12px;" placeholder="Search register number or name" oninput="filterRows()">
+        <button type="button" onclick="clearAbsentees()" class="btn btn-outline btn-sm">Clear Absentees</button>
       </div>
     </div>
     <div class="table-wrapper">
@@ -59,36 +60,38 @@
           <tr>
             <th style="width:60px;">#</th>
             <th>Register Number</th>
+            <th>Student Name</th>
             <th style="width:140px;">Year</th>
             <th style="width:140px;">Section</th>
-            <th style="width:180px;">Status</th>
-            <th style="width:80px;">Remove</th>
+            <th style="width:140px;text-align:center;">Absent</th>
           </tr>
         </thead>
         <tbody id="studentRows">
           {% for row in student_rows %}
-          <tr class="student-row">
+          <tr class="student-row" data-search="{{ (row.register_number ~ ' ' ~ row.student_name)|lower }}">
             <td class="row-index">{{ loop.index }}</td>
-            <td><input type="text" name="register_number[]" class="form-control" value="{{ row.register_number }}" placeholder="Register no." required oninput="updateCounts()"></td>
-            <td>
-              <select name="year[]" class="form-control">
-                <option value="">Year</option>
-                {% for i in range(1,5) %}<option value="{{ i }}" {% if row.year == i %}selected{% endif %}>Year {{ i }}</option>{% endfor %}
-              </select>
+            <td style="font-family:monospace;font-weight:700;color:#1a237e;">
+              {{ row.register_number }}
+              <input type="hidden" name="seating_id[]" value="{{ row.seating_id }}">
+              <input type="hidden" name="register_number[]" value="{{ row.register_number }}">
+              <input type="hidden" name="year[]" value="{{ row.year or '' }}">
+              <input type="hidden" name="section[]" value="{{ row.section or '' }}">
             </td>
             <td>
-              <select name="section[]" class="form-control">
-                <option value="">Section</option>
-                {% for letter in ['A','B','C','D','E'] %}<option value="{{ letter }}" {% if row.section == letter %}selected{% endif %}>{{ letter }}</option>{% endfor %}
-              </select>
+              <div class="fw-bold">{{ row.student_name or '-' }}</div>
+              {% if row.marked %}<div class="text-muted">Already saved as {{ row.status }}</div>{% endif %}
             </td>
-            <td>
-              <select name="status[]" class="form-control" onchange="updateCounts()">
-                <option value="present" {% if row.status != 'absent' %}selected{% endif %}>Present</option>
-                <option value="absent" {% if row.status == 'absent' %}selected{% endif %}>Absent</option>
-              </select>
+            <td>{% if row.year %}Year {{ row.year }}{% else %}-{% endif %}</td>
+            <td>{% if row.section %}<span class="badge badge-primary">Section {{ row.section }}</span>{% else %}-{% endif %}</td>
+            <td style="text-align:center;">
+              <label style="display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;color:#991b1b;">
+                <input type="checkbox" name="absent_register[]" value="{{ row.register_number }}"
+                       {% if row.status == 'absent' %}checked{% endif %}
+                       onchange="updateCounts()"
+                       style="width:18px;height:18px;">
+                Absent
+              </label>
             </td>
-            <td><button type="button" onclick="removeRow(this)" class="btn btn-danger btn-sm">X</button></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -98,92 +101,57 @@
 
   <div style="position:sticky;bottom:20px;z-index:100;text-align:center;padding:12px;">
     <button type="submit" class="btn btn-primary btn-lg" style="box-shadow:0 4px 12px rgba(26,35,126,0.3);">
-      Save Hall Entry
+      Save Absentees
     </button>
   </div>
 </form>
+{% else %}
+<div class="empty-state" style="padding:48px 24px;text-align:center;">
+  <div class="icon">🪑</div>
+  <h4>No Students Allotted</h4>
+  <p>This hall does not have registered students attached yet. Add register numbers from Seating Allotment.</p>
+  <a href="{{ url_for('admin.seating_allotment') }}" class="btn btn-primary" style="margin-top:12px;">Go to Seating Allotment</a>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-let rowCount = 0;
-
-function rowTemplate() {
-  rowCount += 1;
-  return `
-    <tr class="student-row">
-      <td class="row-index">${rowCount}</td>
-      <td><input type="text" name="register_number[]" class="form-control" placeholder="Register no." required oninput="updateCounts()"></td>
-      <td>
-        <select name="year[]" class="form-control">
-          <option value="">Year</option>
-          <option value="1">Year 1</option>
-          <option value="2">Year 2</option>
-          <option value="3">Year 3</option>
-          <option value="4">Year 4</option>
-        </select>
-      </td>
-      <td>
-        <select name="section[]" class="form-control">
-          <option value="">Section</option>
-          <option value="A">A</option>
-          <option value="B">B</option>
-          <option value="C">C</option>
-          <option value="D">D</option>
-          <option value="E">E</option>
-        </select>
-      </td>
-      <td>
-        <select name="status[]" class="form-control" onchange="updateCounts()">
-          <option value="present" selected>Present</option>
-          <option value="absent">Absent</option>
-        </select>
-      </td>
-      <td><button type="button" onclick="removeRow(this)" class="btn btn-danger btn-sm">X</button></td>
-    </tr>`;
+function visibleRows() {
+  return Array.from(document.querySelectorAll('.student-row')).filter(row => row.style.display !== 'none');
 }
 
 function refreshIndexes() {
-  document.querySelectorAll('.student-row').forEach((row, index) => {
+  visibleRows().forEach((row, index) => {
     row.querySelector('.row-index').textContent = index + 1;
   });
 }
 
-function addRow() {
-  document.getElementById('studentRows').insertAdjacentHTML('beforeend', rowTemplate());
-  refreshIndexes();
-  updateCounts();
+function updateCounts() {
+  const rows = Array.from(document.querySelectorAll('.student-row'));
+  const absent = rows.filter(row => row.querySelector('input[type="checkbox"]').checked).length;
+  const total = rows.length;
+  document.getElementById('totalCount').textContent = total;
+  document.getElementById('presentCount').textContent = total - absent;
+  document.getElementById('absentCount').textContent = absent;
 }
 
-function removeRow(button) {
-  button.closest('tr').remove();
-  refreshIndexes();
-  updateCounts();
-}
-
-function markAll(status) {
-  document.querySelectorAll('select[name="status[]"]').forEach(input => {
-    input.value = status;
+function clearAbsentees() {
+  document.querySelectorAll('input[name="absent_register[]"]').forEach(input => {
+    input.checked = false;
   });
   updateCounts();
 }
 
-function updateCounts() {
-  const rows = Array.from(document.querySelectorAll('.student-row'));
-  const entered = rows.filter(row => row.querySelector('input[name="register_number[]"]').value.trim()).length;
-  const absent = rows.filter(row => row.querySelector('select[name="status[]"]').value === 'absent').length;
-  const present = rows.length - absent;
-  document.getElementById('enteredCount').textContent = entered;
-  document.getElementById('presentCount').textContent = present;
-  document.getElementById('absentCount').textContent = absent;
+function filterRows() {
+  const q = document.getElementById('studentSearch').value.trim().toLowerCase();
+  document.querySelectorAll('.student-row').forEach(row => {
+    row.style.display = row.dataset.search.includes(q) ? '' : 'none';
+  });
+  refreshIndexes();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  rowCount = document.querySelectorAll('.student-row').length;
-  if (rowCount === 0) {
-    const planned = Number('{{ seating.total_students or seating.num_students or 1 }}') || 1;
-    for (let i = 0; i < planned; i += 1) addRow();
-  }
   refreshIndexes();
   updateCounts();
 });

@@ -1,4 +1,4 @@
-import os, io, uuid
+import os, io, uuid, re
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
@@ -10,11 +10,23 @@ admin_bp = Blueprint('admin', __name__)
 
 SEMESTER_TO_YEAR = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4}
 SECTIONS = ['A', 'B', 'C']
+STUDENT_DEFAULT_PASSWORD = 'student123'
+STUDENT_EMAIL_DOMAIN = 'student.local'
 
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if current_user.role != 'admin':
+            flash('Access denied.', 'danger')
+            return redirect(url_for('main.index'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_or_hod_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
             flash('Access denied.', 'danger')
             return redirect(url_for('main.index'))
         return f(*args, **kwargs)
@@ -73,6 +85,335 @@ def _get_year_section_stats():
                 'apps': year_apps
             }
     return stats
+
+
+def _clean_cell(value) -> str:
+    if value is None:
+        return ''
+    text = str(value).strip()
+    if text.lower() in ('nan', 'none', 'na', ''):
+        return ''
+    if re.fullmatch(r'\d+\.0', text):
+        text = text[:-2]
+    return text.strip()
+
+
+def _normalize_column_name(col) -> str:
+    return re.sub(r'_+', '_', re.sub(r'[^a-z0-9]+', '_', str(col).strip().lower())).strip('_')
+
+
+def _normalize_register_number(value) -> str:
+    return re.sub(r'\s+', '', _clean_cell(value)).upper()
+
+
+def _parse_year(value):
+    text = _clean_cell(value)
+    if not text:
+        return None
+    try:
+        year = int(float(text))
+    except ValueError:
+        return None
+    return year if year in (1, 2, 3, 4) else None
+
+
+def _parse_section(value):
+    section = _clean_cell(value).upper()
+    return section if section in SECTIONS else None
+
+
+def _parse_date(value):
+    text = _clean_cell(value)
+    if not text:
+        return None
+    try:
+        import pandas as pd
+        return pd.to_datetime(text, dayfirst=True).date()
+    except Exception:
+        try:
+            return datetime.strptime(text, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+
+def _row_value(row, *keys):
+    for key in keys:
+        value = row.get(key, '')
+        value = _clean_cell(value)
+        if value:
+            return value
+    return ''
+
+
+def _find_student_by_register(register_number):
+    reg = _normalize_register_number(register_number)
+    if not reg:
+        return None
+    return User.query.filter(
+        User.role == 'student',
+        db.func.upper(User.register_number) == reg
+    ).first()
+
+
+def _generated_student_email(register_number):
+    safe = re.sub(r'[^a-z0-9._-]+', '_', register_number.lower()).strip('._-') or uuid.uuid4().hex
+    candidate = f'{safe}@{STUDENT_EMAIL_DOMAIN}'
+    suffix = 2
+    while User.query.filter(db.func.lower(User.email) == candidate.lower()).first():
+        candidate = f'{safe}{suffix}@{STUDENT_EMAIL_DOMAIN}'
+        suffix += 1
+    return candidate
+
+
+def _validate_student_payload(register_number, name, year, section):
+    errors = []
+    if not register_number:
+        errors.append('Register number is required.')
+    if not name:
+        errors.append('Student name is required.')
+    if year not in (1, 2, 3, 4):
+        errors.append('Year must be 1, 2, 3, or 4.')
+    if section not in SECTIONS:
+        errors.append(f'Section must be one of {", ".join(SECTIONS)}.')
+    return errors
+
+
+def _upsert_student_record(register_number, name, year, section, email='', phone=''):
+    register_number = _normalize_register_number(register_number)
+    name = _clean_cell(name)
+    email = _clean_cell(email).lower()
+    phone = _clean_cell(phone)
+    errors = _validate_student_payload(register_number, name, year, section)
+    if errors:
+        return 'skipped', '; '.join(errors)
+
+    existing = _find_student_by_register(register_number)
+    email_user = None
+    if email:
+        email_user = User.query.filter(db.func.lower(User.email) == email).first()
+        if email_user and email_user.role != 'student':
+            return 'skipped', f'Email {email} belongs to a staff/admin account.'
+        if existing and email_user and email_user.id != existing.id:
+            return 'skipped', f'Email {email} belongs to another student.'
+        if not existing:
+            existing = email_user
+
+    if existing:
+        existing.name = name
+        existing.register_number = register_number
+        existing.year = year
+        existing.section = section
+        if email:
+            existing.email = email
+        if phone:
+            existing.phone = phone
+        existing.is_active = True
+        return 'updated', ''
+
+    student = User(
+        name=name,
+        email=email or _generated_student_email(register_number),
+        phone=phone,
+        role='student',
+        register_number=register_number,
+        year=year,
+        section=section,
+        is_active=True
+    )
+    student.set_password(STUDENT_DEFAULT_PASSWORD)
+    db.session.add(student)
+    return 'added', ''
+
+
+def _allotment_student_count(allotment):
+    regs = allotment.get_register_numbers()
+    return len(regs) if regs else (allotment.total_students or allotment.num_students or 0)
+
+
+def _absence_student_year(record, student=None):
+    if student:
+        value = student.get('year') or student.get('yr')
+        try:
+            if value:
+                year = int(float(value))
+                if year in (1, 2, 3, 4):
+                    return year
+        except (TypeError, ValueError):
+            pass
+    if record.semester:
+        return SEMESTER_TO_YEAR.get(record.semester)
+    if record.uploader and record.uploader.handling_year:
+        return record.uploader.handling_year
+    return None
+
+
+def _absence_records_for_cia(cia_number, year_filter=None):
+    records = AbsenceRecord.query.filter_by(cia_number=cia_number)\
+        .order_by(AbsenceRecord.uploaded_at.desc()).all()
+    if not year_filter:
+        return records
+    filtered = []
+    for record in records:
+        students = record.get_students()
+        if students:
+            if any(_absence_student_year(record, student) == year_filter for student in students):
+                filtered.append(record)
+        elif _absence_student_year(record) == year_filter:
+            filtered.append(record)
+    return filtered
+
+
+# STUDENT REGISTRY
+@admin_bp.route('/students')
+@login_required
+@admin_required
+def manage_students():
+    year_filter = request.args.get('year', type=int)
+    section_filter = (request.args.get('section', '') or '').upper()
+    search = (request.args.get('q', '') or '').strip()
+
+    query = User.query.filter_by(role='student')
+    if year_filter:
+        query = query.filter_by(year=year_filter)
+    if section_filter:
+        query = query.filter_by(section=section_filter)
+    if search:
+        like = f'%{search}%'
+        query = query.filter(
+            User.name.ilike(like) |
+            User.register_number.ilike(like) |
+            User.email.ilike(like)
+        )
+
+    students = query.order_by(User.year, User.section, User.register_number, User.name).all()
+    total_students = User.query.filter_by(role='student').count()
+    active_students = User.query.filter_by(role='student', is_active=True).count()
+    return render_template('admin/manage_students.html',
+                           students=students, sections=SECTIONS,
+                           year_filter=year_filter,
+                           section_filter=section_filter,
+                           search=search,
+                           total_students=total_students,
+                           active_students=active_students,
+                           default_password=STUDENT_DEFAULT_PASSWORD)
+
+
+@admin_bp.route('/students/upload', methods=['POST'])
+@login_required
+@admin_required
+def upload_students():
+    f = request.files.get('student_file')
+    if not f or not f.filename:
+        flash('Please select a Student Details file.', 'danger')
+        return redirect(url_for('admin.manage_students'))
+    ext = f.filename.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls', 'csv'):
+        flash('Only Excel (.xlsx/.xls) or CSV files accepted.', 'danger')
+        return redirect(url_for('admin.manage_students'))
+
+    added = updated = skipped = 0
+    try:
+        import pandas as pd
+        df = pd.read_csv(f, dtype=str) if ext == 'csv' else pd.read_excel(f, dtype=str)
+        df.columns = [_normalize_column_name(c) for c in df.columns]
+
+        for _, row in df.iterrows():
+            register_number = _normalize_register_number(_row_value(
+                row, 'register_number', 'register_no', 'reg_no', 'reg', 'roll_no'))
+            name = _row_value(row, 'name', 'student_name', 'student')
+            year = _parse_year(_row_value(row, 'year', 'yr'))
+            section = _parse_section(_row_value(row, 'section', 'sec'))
+            email = _row_value(row, 'email', 'email_id', 'student_email', 'student_email_id')
+            phone = _row_value(row, 'phone', 'phone_number', 'mobile')
+
+            if not email:
+                skipped += 1
+                continue
+
+            status, _ = _upsert_student_record(register_number, name, year, section, email, phone)
+            if status == 'added':
+                added += 1
+            elif status == 'updated':
+                updated += 1
+            else:
+                skipped += 1
+
+        db.session.commit()
+        flash(f'Student upload complete: {added} added, {updated} updated, {skipped} skipped. '
+              f'Default password for new accounts: {STUDENT_DEFAULT_PASSWORD}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Student upload error: {e}', 'danger')
+    return redirect(url_for('admin.manage_students'))
+
+
+@admin_bp.route('/students/save', methods=['POST'])
+@login_required
+@admin_required
+def save_student():
+    student_id = request.form.get('student_id', '').strip()
+    register_number = _normalize_register_number(request.form.get('register_number', ''))
+    name = _clean_cell(request.form.get('name', ''))
+    year = _parse_year(request.form.get('year', ''))
+    section = _parse_section(request.form.get('section', ''))
+    email = _clean_cell(request.form.get('email', '')).lower()
+    phone = _clean_cell(request.form.get('phone', ''))
+    password = request.form.get('password', '').strip()
+
+    errors = _validate_student_payload(register_number, name, year, section)
+    if errors:
+        flash(' '.join(errors), 'danger')
+        return redirect(url_for('admin.manage_students'))
+
+    try:
+        if student_id:
+            student = User.query.filter_by(id=int(student_id), role='student').first_or_404()
+            duplicate = _find_student_by_register(register_number)
+            if duplicate and duplicate.id != student.id:
+                flash('Another student already uses this register number.', 'danger')
+                return redirect(url_for('admin.manage_students'))
+            if email:
+                email_user = User.query.filter(db.func.lower(User.email) == email).first()
+                if email_user and email_user.id != student.id:
+                    flash('Another account already uses this email.', 'danger')
+                    return redirect(url_for('admin.manage_students'))
+                student.email = email
+            student.name = name
+            student.register_number = register_number
+            student.year = year
+            student.section = section
+            student.phone = phone
+            student.is_active = True
+            if password:
+                student.set_password(password)
+            db.session.commit()
+            flash('Student updated.', 'success')
+        else:
+            status, message = _upsert_student_record(register_number, name, year, section, email, phone)
+            if status == 'skipped':
+                flash(message, 'danger')
+                return redirect(url_for('admin.manage_students'))
+            if password:
+                student = _find_student_by_register(register_number)
+                if student:
+                    student.set_password(password)
+            db.session.commit()
+            flash(f'Student {status}. Default password: {password or STUDENT_DEFAULT_PASSWORD}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Student save error: {e}', 'danger')
+    return redirect(url_for('admin.manage_students'))
+
+
+@admin_bp.route('/students/<int:uid>/toggle', methods=['POST'])
+@login_required
+@admin_required
+def toggle_student(uid):
+    student = User.query.filter_by(id=uid, role='student').first_or_404()
+    student.is_active = not student.is_active
+    db.session.commit()
+    flash(f'Student {"activated" if student.is_active else "deactivated"}.', 'success')
+    return redirect(url_for('admin.manage_students'))
 
 
 # ─── BULK UPLOAD PAGE (GET) ──────────────────────────────────────────────────
@@ -757,31 +1098,32 @@ def delete_cia_date(cid):
 # ─── ABSENTEES ───────────────────────────────────────────────────────────────
 @admin_bp.route('/absentees')
 @login_required
-@admin_required
+@admin_or_hod_required
 def view_absentees():
-    records_cia1 = AbsenceRecord.query.filter_by(cia_number=1)\
-        .order_by(AbsenceRecord.uploaded_at.desc()).all()
-    records_cia2 = AbsenceRecord.query.filter_by(cia_number=2)\
-        .order_by(AbsenceRecord.uploaded_at.desc()).all()
-    records_cia3 = AbsenceRecord.query.filter_by(cia_number=3)\
-        .order_by(AbsenceRecord.uploaded_at.desc()).all()
+    year_filter = request.args.get('year', type=int)
+    records_cia1 = _absence_records_for_cia(1, year_filter)
+    records_cia2 = _absence_records_for_cia(2, year_filter)
+    records_cia3 = _absence_records_for_cia(3, year_filter)
     return render_template('admin/absentees.html',
                            records_cia1=records_cia1,
                            records_cia2=records_cia2,
-                           records_cia3=records_cia3)
+                           records_cia3=records_cia3,
+                           year_filter=year_filter)
 
 
 @admin_bp.route('/absentees/download/cia<int:cia_num>/<fmt>')
 @login_required
-@admin_required
+@admin_or_hod_required
 def download_absentees_cia(cia_num, fmt):
-    records = AbsenceRecord.query.filter_by(cia_number=cia_num)\
-              .order_by(AbsenceRecord.uploaded_at.desc()).all()
+    year_filter = request.args.get('year', type=int)
+    records = _absence_records_for_cia(cia_num, year_filter)
     rows = []
     for rec in records:
         students = rec.get_students()
         if students:
             for s in students:
+                if year_filter and _absence_student_year(rec, s) != year_filter:
+                    continue
                 rows.append({'Subject': rec.subject.subject_name,
                              'Code': rec.subject.subject_code, 'CIA': cia_num,
                              'Semester': rec.semester or '',
@@ -815,8 +1157,9 @@ def download_absentees_cia(cia_num, fmt):
         for col in ws.columns:
             ws.column_dimensions[col[0].column_letter].width = 18
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        label = f'_Year{year_filter}' if year_filter else ''
         return send_file(buf, as_attachment=True,
-            download_name=f'absentees_CIA{cia_num}_{datetime.now().strftime("%Y%m%d")}.xlsx',
+            download_name=f'absentees_CIA{cia_num}{label}_{datetime.now().strftime("%Y%m%d")}.xlsx',
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     else:
         from reportlab.lib.pagesizes import A4
@@ -829,7 +1172,10 @@ def download_absentees_cia(cia_num, fmt):
                                 leftMargin=30, rightMargin=30,
                                 topMargin=40, bottomMargin=30)
         styles = getSampleStyleSheet()
-        els = [Paragraph(f'Absentee List — CIA {cia_num}', styles['Title']),
+        title = f'Absentee List — CIA {cia_num}'
+        if year_filter:
+            title += f' | Year {year_filter}'
+        els = [Paragraph(title, styles['Title']),
                Paragraph(f'Generated: {datetime.now().strftime("%d %b %Y %H:%M")}',
                          styles['Normal']), Spacer(1, 12)]
         if rows:
@@ -850,8 +1196,9 @@ def download_absentees_cia(cia_num, fmt):
             ]))
             els.append(t)
         doc.build(els); buf.seek(0)
+        label = f'_Year{year_filter}' if year_filter else ''
         return send_file(buf, as_attachment=True,
-            download_name=f'absentees_CIA{cia_num}_{datetime.now().strftime("%Y%m%d")}.pdf',
+            download_name=f'absentees_CIA{cia_num}{label}_{datetime.now().strftime("%Y%m%d")}.pdf',
             mimetype='application/pdf')
 
 
@@ -908,10 +1255,10 @@ def retransmit(app_id):
 def _expand_register_numbers(raw: str) -> list:
     """
     Expand register-number ranges and comma-separated lists.
-    E.g. '6176AC23UCS001-6176AC23UCS028' expands to individual reg nos.
+    E.g. '6176AC23UCS001-6176AC23UCS028' or
+    '2403617610421114 to 2403617610422167' expands to individual reg nos.
     Supports (No Numbers: 19) exclusion annotations.
     """
-    import re
     if not raw:
         return []
     excluded = set()
@@ -921,22 +1268,128 @@ def _expand_register_numbers(raw: str) -> list:
     result = []
     parts = re.split(r'[,\n]+', raw)
     for part in parts:
-        part = part.strip()
+        part = _clean_cell(part)
         if not part:
             continue
-        range_match = re.match(r'^([A-Za-z0-9]+?)(\d+)\s*-\s*([A-Za-z0-9]+?)(\d+)$', part)
+        range_match = re.match(r'^(.*?)\s*(?:-|to)\s*(.*?)$', part, re.IGNORECASE)
         if range_match:
-            prefix1, start_str, prefix2, end_str = range_match.groups()
-            if prefix1 == prefix2:
+            start_reg, end_reg = range_match.groups()
+            start_parts = _split_register_tail(start_reg)
+            end_parts = _split_register_tail(end_reg)
+            if start_parts and end_parts and start_parts[0] == end_parts[0]:
+                prefix1, start_str = start_parts
+                _, end_str = end_parts
                 width = len(start_str)
-                for n in range(int(start_str), int(end_str) + 1):
+                start_num = int(start_str)
+                end_num = int(end_str)
+                if end_num < start_num:
+                    start_num, end_num = end_num, start_num
+                if (end_num - start_num) > 20000:
+                    result.append(_normalize_register_number(part))
+                    continue
+                for n in range(start_num, end_num + 1):
                     if n not in excluded:
-                        result.append(f"{prefix1}{str(n).zfill(width)}")
+                        result.append(_normalize_register_number(f"{prefix1}{str(n).zfill(width)}"))
             else:
-                result.append(part)
+                result.append(_normalize_register_number(part))
         else:
-            result.append(part)
+            result.append(_normalize_register_number(part))
+    return _dedupe_registers(result)
+
+
+def _split_register_tail(register_number):
+    match = re.match(r'^(.*?)(\d+)$', _clean_cell(register_number))
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
+def _dedupe_registers(register_numbers):
+    seen = set()
+    result = []
+    for reg in register_numbers:
+        reg = _normalize_register_number(reg)
+        if reg and reg not in seen:
+            seen.add(reg)
+            result.append(reg)
     return result
+
+
+def _registered_student_map(year=None, section=None, active_only=True):
+    query = User.query.filter_by(role='student')
+    if active_only:
+        query = query.filter_by(is_active=True)
+    if year:
+        query = query.filter_by(year=year)
+    if section:
+        query = query.filter_by(section=section)
+    students = query.all()
+    return {
+        _normalize_register_number(student.register_number): student
+        for student in students
+        if _normalize_register_number(student.register_number)
+    }
+
+
+def _resolve_registered_registers(raw_registers, year=None, section=None):
+    expanded = _expand_register_numbers(raw_registers)
+    if not expanded:
+        return [], 0, []
+    student_map = _registered_student_map(year=year, section=section, active_only=True)
+    resolved = [reg for reg in expanded if reg in student_map]
+    return resolved, len(expanded) - len(resolved), expanded
+
+
+def _find_invigilator(identifier):
+    identifier = _clean_cell(identifier)
+    if not identifier:
+        return None
+    query = User.query.filter(
+        User.is_active == True,
+        (User.role.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])) |
+        (User.secondary_role.in_(['subject_staff', 'tutor', 'hod', 'coordinator']))
+    )
+    if '@' in identifier:
+        return query.filter(db.func.lower(User.email) == identifier.lower()).first()
+    return query.filter(db.func.lower(User.name) == identifier.lower()).first()
+
+
+def _hall_student_rows(hall_number, allotments):
+    rows = []
+    student_map = _registered_student_map(active_only=False)
+    attendance = ExamAttendance.query.filter_by(hall_number=hall_number).all()
+    attendance_map = {
+        (att.seating_id, _normalize_register_number(att.register_number)): att
+        for att in attendance
+    }
+
+    for allotment in allotments:
+        for reg in allotment.get_register_numbers():
+            reg = _normalize_register_number(reg)
+            student = student_map.get(reg)
+            att = attendance_map.get((allotment.id, reg))
+            rows.append({
+                'seating_id': allotment.id,
+                'register_number': reg,
+                'student_name': student.name if student else '',
+                'year': (student.year if student and student.year else allotment.year),
+                'section': (student.section if student and student.section else allotment.section),
+                'status': att.status if att else 'present',
+                'marked': bool(att),
+            })
+
+    if not rows:
+        for att in attendance:
+            rows.append({
+                'seating_id': att.seating_id,
+                'register_number': att.register_number,
+                'student_name': '',
+                'year': att.year,
+                'section': att.section,
+                'status': att.status,
+                'marked': True,
+            })
+    return rows
 
 
 # ─── SEATING ALLOTMENT ────────────────────────────────────────────────────────
@@ -949,7 +1402,8 @@ def seating_allotment():
         return redirect(url_for('main.index'))
     allotments = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
     all_staff  = User.query.filter(
-        User.role.in_(['subject_staff', 'tutor', 'hod', 'coordinator']),
+        (User.role.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])) |
+        (User.secondary_role.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])),
         User.is_active == True
     ).order_by(User.name).all()
     hall_map = {}
@@ -967,7 +1421,7 @@ def seating_upload():
         flash('Access denied.', 'danger')
         return redirect(url_for('admin.seating_allotment'))
 
-    added = updated = 0
+    added = updated = skipped_rows = skipped_registers = 0
     f = request.files.get('seating_file')
     if f and f.filename:
         ext = f.filename.rsplit('.', 1)[-1].lower()
@@ -986,28 +1440,33 @@ def seating_upload():
                             return str(val).strip()
                     return ''
                 hall    = v('hall_number', 'hall_no', 'hall')
+                exam_dt = _parse_date(v('exam_date', 'seating_date', 'cia_exam_date', 'date'))
                 yr_str  = v('year', 'yr')
                 sec     = v('section', 'sec').upper()
                 reg_raw = v('register_numbers', 'register_number', 'reg_numbers', 'reg_nos')
                 num_s   = v('no_of_students', 'num_students', 'count')
                 tot_s   = v('total_no_of_students', 'total_students', 'total')
-                inv_em  = v('invigilator_email', 'invigilator', 'staff_email')
-                if not hall:
+                inv_em  = v('invigilator_email', 'invigilator', 'staff_email', 'invigilator_name')
+                if not hall or not exam_dt:
+                    skipped_rows += 1
                     continue
                 yr_int  = int(float(yr_str)) if yr_str else None
                 sec_val = sec if sec in ('A', 'B', 'C') else None
                 num_int = int(float(num_s)) if num_s else None
                 tot_int = int(float(tot_s)) if tot_s else None
-                reg_list = _expand_register_numbers(reg_raw)
-                inv_user = None
-                if inv_em:
-                    inv_user = User.query.filter(db.func.lower(User.email) == inv_em.lower()).first()
+                reg_list, missing_count, _ = _resolve_registered_registers(reg_raw, yr_int, sec_val)
+                skipped_registers += missing_count
+                if reg_raw and not reg_list:
+                    skipped_rows += 1
+                    continue
+                inv_user = _find_invigilator(inv_em)
                 existing = SeatingAllotment.query.filter_by(
                     hall_number=hall, year=yr_int, section=sec_val).first()
                 if existing:
+                    existing.exam_date = exam_dt or existing.exam_date
                     existing.set_register_numbers(reg_list)
-                    existing.num_students   = num_int or len(reg_list) or existing.num_students
-                    existing.total_students = tot_int or existing.total_students
+                    existing.num_students   = len(reg_list) or num_int or existing.num_students
+                    existing.total_students = len(reg_list) or tot_int or existing.total_students
                     if inv_user:
                         existing.invigilator_id = inv_user.id
                     existing.uploaded_by = current_user.id
@@ -1015,35 +1474,52 @@ def seating_upload():
                     updated += 1
                 else:
                     sa = SeatingAllotment(
-                        hall_number=hall, year=yr_int, section=sec_val,
-                        num_students=num_int or len(reg_list), total_students=tot_int,
+                        hall_number=hall, exam_date=exam_dt, year=yr_int, section=sec_val,
+                        num_students=len(reg_list) or num_int,
+                        total_students=len(reg_list) or tot_int,
                         invigilator_id=inv_user.id if inv_user else None,
                         uploaded_by=current_user.id)
                     sa.set_register_numbers(reg_list)
                     db.session.add(sa)
                     added += 1
             db.session.commit()
-            flash(f'Seating allotment uploaded: {added} new, {updated} updated.', 'success')
+            flash(f'Seating allotment uploaded: {added} new, {updated} updated, '
+                  f'{skipped_rows} rows skipped.', 'success')
+            if skipped_registers:
+                flash(f'{skipped_registers} register number(s) were ignored because they are not active students in the registry/year/section.', 'warning')
         except Exception as e:
             db.session.rollback()
             flash(f'Upload failed: {e}', 'danger')
     elif request.form.get('hall_number'):
         record_id = request.form.get('record_id')
         hall = (request.form.get('hall_number') or '').strip()
+        exam_dt = _parse_date(request.form.get('exam_date', ''))
         student_count = request.form.get('student_count') or request.form.get('num_students')
+        yr_int = _parse_year(request.form.get('year', ''))
+        sec_val = _parse_section(request.form.get('section', ''))
+        reg_raw = request.form.get('register_numbers', '')
+        invigilator_id = request.form.get('invigilator_id', type=int) or None
 
         if not hall:
             flash('Hall number is required for manual entry.', 'danger')
             return redirect(url_for('admin.seating_allotment'))
-
-        try:
-            student_count_int = int(student_count)
-        except (TypeError, ValueError):
-            flash('Number of students must be a valid number.', 'danger')
+        if not exam_dt:
+            flash('Seating / CIA date is required for attendance-to-CIA absentee mapping.', 'danger')
             return redirect(url_for('admin.seating_allotment'))
 
+        reg_list, skipped_registers, _ = _resolve_registered_registers(reg_raw, yr_int, sec_val)
+        if reg_raw and not reg_list:
+            flash('No active registered students matched that register number list/range.', 'danger')
+            return redirect(url_for('admin.seating_allotment'))
+
+        try:
+            student_count_int = int(student_count) if student_count else len(reg_list)
+        except (TypeError, ValueError):
+            student_count_int = len(reg_list)
+        student_count_int = len(reg_list) or student_count_int
+
         if student_count_int < 1:
-            flash('Number of students must be at least 1.', 'danger')
+            flash('At least one registered student or a valid student count is required.', 'danger')
             return redirect(url_for('admin.seating_allotment'))
 
         if record_id:
@@ -1052,39 +1528,48 @@ def seating_upload():
                 flash('Hall record not found.', 'danger')
                 return redirect(url_for('admin.seating_allotment'))
             existing.hall_number = hall
-            existing.year = None
-            existing.section = None
-            existing.set_register_numbers([])
+            existing.exam_date = exam_dt
+            existing.year = yr_int
+            existing.section = sec_val
+            existing.set_register_numbers(reg_list)
             existing.num_students = student_count_int
             existing.total_students = student_count_int
+            existing.invigilator_id = invigilator_id
             existing.uploaded_by = current_user.id
             existing.uploaded_at = datetime.utcnow()
             updated += 1
         else:
-            existing = SeatingAllotment.query.filter_by(hall_number=hall).first()
+            existing = SeatingAllotment.query.filter_by(
+                hall_number=hall, year=yr_int, section=sec_val).first()
             if existing:
-                existing.year = None
-                existing.section = None
-                existing.set_register_numbers([])
+                existing.exam_date = exam_dt
+                existing.year = yr_int
+                existing.section = sec_val
+                existing.set_register_numbers(reg_list)
                 existing.num_students = student_count_int
                 existing.total_students = student_count_int
+                existing.invigilator_id = invigilator_id
                 existing.uploaded_by = current_user.id
                 existing.uploaded_at = datetime.utcnow()
                 updated += 1
             else:
                 sa = SeatingAllotment(
                     hall_number=hall,
-                    year=None,
-                    section=None,
+                    exam_date=exam_dt,
+                    year=yr_int,
+                    section=sec_val,
                     num_students=student_count_int,
                     total_students=student_count_int,
+                    invigilator_id=invigilator_id,
                     uploaded_by=current_user.id
                 )
-                sa.set_register_numbers([])
+                sa.set_register_numbers(reg_list)
                 db.session.add(sa)
                 added += 1
         db.session.commit()
         flash(f'Hall entry saved: {added} new, {updated} updated.', 'success')
+        if skipped_registers:
+            flash(f'{skipped_registers} register number(s) were ignored because they are not active students in the selected year/section.', 'warning')
     else:
         flash('Please upload a seating file or submit manual hall details.', 'danger')
     return redirect(url_for('admin.seating_allotment'))
@@ -1105,7 +1590,8 @@ def get_seating_entry(sa_id):
         'section': sa.section,
         'register_numbers': sa.get_register_numbers(),
         'num_students': sa.num_students,
-        'total_students': sa.total_students
+        'total_students': sa.total_students,
+        'invigilator_id': sa.invigilator_id
     })
 
 
@@ -1149,24 +1635,23 @@ def mark_attendance_page(hall_number):
     if not can_access:
         flash('You do not have access to mark halls.', 'danger')
         return redirect(url_for('main.index'))
+    assigned_invigilators = {a.invigilator_id for a in allotments if a.invigilator_id}
+    is_exam_admin = (
+        current_user.role in ('admin', 'hod', 'coordinator') or
+        current_user.secondary_role in ('hod', 'coordinator')
+    )
+    if assigned_invigilators and not is_exam_admin and current_user.id not in assigned_invigilators:
+        flash('This hall is assigned to another invigilator.', 'danger')
+        return redirect(url_for('admin.my_halls'))
     seating = allotments[0]
-    student_rows = []
-    attendance_rows = ExamAttendance.query.filter_by(hall_number=hall_number).order_by(
-        ExamAttendance.year, ExamAttendance.section, ExamAttendance.register_number).all()
-    for att in attendance_rows:
-        student_rows.append({
-            'seating_id': att.seating_id,
-            'register_number': att.register_number,
-            'year': att.year,
-            'section': att.section,
-            'status': att.status,
-            'marked': True,
-        })
+    student_rows = _hall_student_rows(hall_number, allotments)
+    planned_count = sum(_allotment_student_count(a) for a in allotments)
     return render_template('admin/mark_attendance.html',
                            hall_number=hall_number,
                            allotments=allotments,
                            seating=seating,
-                           student_rows=student_rows)
+                           student_rows=student_rows,
+                           planned_count=planned_count)
 
 
 @admin_bp.route('/attendance/mark/<string:hall_number>/submit', methods=['POST'])
@@ -1184,31 +1669,51 @@ def submit_attendance(hall_number):
         flash('No seating data found for this hall.', 'warning')
         return redirect(url_for('main.index'))
 
-    seating = allotments[0]
-    saved = 0
-    submitted_regs = set()
+    assigned_invigilators = {a.invigilator_id for a in allotments if a.invigilator_id}
+    is_exam_admin = (
+        current_user.role in ('admin', 'hod', 'coordinator') or
+        current_user.secondary_role in ('hod', 'coordinator')
+    )
+    if assigned_invigilators and not is_exam_admin and current_user.id not in assigned_invigilators:
+        flash('This hall is assigned to another invigilator.', 'danger')
+        return redirect(url_for('admin.my_halls'))
+
+    allotment_map = {a.id: a for a in allotments}
+    saved = absent_count = present_count = 0
+    submitted_keys = set()
+    absent_regs = {
+        _normalize_register_number(reg)
+        for reg in request.form.getlist('absent_register[]')
+    }
     reg_numbers = request.form.getlist('register_number[]')
+    seating_ids = request.form.getlist('seating_id[]')
     years = request.form.getlist('year[]')
     sections = request.form.getlist('section[]')
-    statuses = request.form.getlist('status[]')
 
     for idx, reg in enumerate(reg_numbers):
-        reg = (reg or '').strip().upper()
+        reg = _normalize_register_number(reg)
         if not reg:
+            continue
+        try:
+            seating_id = int(seating_ids[idx]) if idx < len(seating_ids) else 0
+        except ValueError:
+            seating_id = 0
+        seating = allotment_map.get(seating_id)
+        if not seating:
             continue
         year_raw = years[idx] if idx < len(years) else ''
         section = (sections[idx] if idx < len(sections) else '').strip().upper()
-        status_raw = statuses[idx] if idx < len(statuses) else 'present'
         try:
             year = int(year_raw) if year_raw else None
         except ValueError:
             year = None
         if section not in ('A', 'B', 'C', 'D', 'E'):
             section = None
-        status = 'absent' if status_raw == 'absent' else 'present'
-        submitted_regs.add(reg)
+        status = 'absent' if reg in absent_regs else 'present'
+        submitted_keys.add((seating.id, reg))
         att = ExamAttendance.query.filter_by(seating_id=seating.id, register_number=reg).first()
         if att:
+            att.exam_date = seating.exam_date
             att.year = year
             att.section = section
             att.status = status
@@ -1217,18 +1722,26 @@ def submit_attendance(hall_number):
         else:
             att = ExamAttendance(
                 seating_id=seating.id, hall_number=seating.hall_number,
+                exam_date=seating.exam_date,
                 register_number=reg, year=year, section=section,
                 status=status, marked_by=current_user.id)
             db.session.add(att)
         saved += 1
+        if status == 'absent':
+            absent_count += 1
+        else:
+            present_count += 1
 
-    existing_records = ExamAttendance.query.filter_by(seating_id=seating.id).all()
+    existing_records = ExamAttendance.query.filter(
+        ExamAttendance.seating_id.in_(list(allotment_map.keys()))
+    ).all()
     for record in existing_records:
-        if record.register_number not in submitted_regs:
+        key = (record.seating_id, _normalize_register_number(record.register_number))
+        if key not in submitted_keys:
             db.session.delete(record)
 
     db.session.commit()
-    flash(f'Attendance saved for hall {hall_number} ({saved} students).', 'success')
+    flash(f'Attendance saved for hall {hall_number}: {absent_count} absent, {present_count} present ({saved} students).', 'success')
     is_adm_hod = (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod')
     if is_adm_hod:
         return redirect(url_for('admin.view_attendance'))
@@ -1245,30 +1758,8 @@ def view_attendance():
     hall_filter    = request.args.get('hall', '')
     section_filter = request.args.get('section', '')
     year_filter    = request.args.get('year', type=int)
-    query = ExamAttendance.query
-    if hall_filter:    query = query.filter_by(hall_number=hall_filter)
-    if section_filter: query = query.filter_by(section=section_filter)
-    if year_filter:    query = query.filter_by(year=year_filter)
-    records   = query.order_by(ExamAttendance.hall_number, ExamAttendance.register_number).all()
-    all_halls = [h[0] for h in db.session.query(ExamAttendance.hall_number).distinct().all()]
-    hall_summary = {}
-    for h in all_halls:
-        hrs = ExamAttendance.query.filter_by(hall_number=h)
-        hall_summary[h] = {
-            'total':   hrs.count(),
-            'present': hrs.filter_by(status='present').count(),
-            'absent':  hrs.filter_by(status='absent').count(),
-        }
-    ys_summary = {}
-    for yr in range(1, 5):
-        ys_summary[yr] = {}
-        for sec in SECTIONS:
-            recs = ExamAttendance.query.filter_by(year=yr, section=sec)
-            ys_summary[yr][sec] = {
-                'total':   recs.count(),
-                'present': recs.filter_by(status='present').count(),
-                'absent':  recs.filter_by(status='absent').count(),
-            }
+    records, hall_summary, ys_summary, all_halls = _attendance_report_data(
+        hall_filter, section_filter, year_filter)
     return render_template('admin/attendance.html',
                            records=records, hall_summary=hall_summary,
                            ys_summary=ys_summary, all_halls=all_halls,
@@ -1276,25 +1767,219 @@ def view_attendance():
                            year_filter=year_filter, sections=SECTIONS)
 
 
+def _attendance_report_data(hall_filter='', section_filter='', year_filter=None):
+    query = ExamAttendance.query
+    if hall_filter:    query = query.filter_by(hall_number=hall_filter)
+    if section_filter: query = query.filter_by(section=section_filter)
+    if year_filter:    query = query.filter_by(year=year_filter)
+    records   = query.order_by(ExamAttendance.hall_number, ExamAttendance.register_number).all()
+    attendance_halls = {h[0] for h in db.session.query(ExamAttendance.hall_number).distinct().all()}
+    seating_halls = {h[0] for h in db.session.query(SeatingAllotment.hall_number).distinct().all()}
+    all_halls = sorted(attendance_halls | seating_halls)
+    summary_halls = [hall_filter] if hall_filter else all_halls
+    hall_summary = {}
+    for h in summary_halls:
+        hrs = ExamAttendance.query.filter_by(hall_number=h)
+        seating_q = SeatingAllotment.query.filter_by(hall_number=h)
+        if section_filter:
+            hrs = hrs.filter_by(section=section_filter)
+            seating_q = seating_q.filter_by(section=section_filter)
+        if year_filter:
+            hrs = hrs.filter_by(year=year_filter)
+            seating_q = seating_q.filter_by(year=year_filter)
+        planned = sum(
+            _allotment_student_count(a)
+            for a in seating_q.all()
+        )
+        marked_total = hrs.count()
+        hall_summary[h] = {
+            'total':   marked_total or planned,
+            'present': hrs.filter_by(status='present').count(),
+            'absent':  hrs.filter_by(status='absent').count(),
+            'marked':  marked_total,
+        }
+    ys_summary = {}
+    for yr in range(1, 5):
+        ys_summary[yr] = {}
+        for sec in SECTIONS:
+            recs = ExamAttendance.query.filter_by(year=yr, section=sec)
+            if hall_filter:
+                recs = recs.filter_by(hall_number=hall_filter)
+            if section_filter and sec != section_filter:
+                recs = recs.filter(ExamAttendance.id == None)
+            if year_filter and yr != year_filter:
+                recs = recs.filter(ExamAttendance.id == None)
+            ys_summary[yr][sec] = {
+                'total':   recs.count(),
+                'present': recs.filter_by(status='present').count(),
+                'absent':  recs.filter_by(status='absent').count(),
+            }
+    return records, hall_summary, ys_summary, all_halls
+
+
+@admin_bp.route('/attendance/download/<fmt>')
+@login_required
+def download_attendance_summary(fmt):
+    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('main.index'))
+    if fmt not in ('excel', 'pdf'):
+        flash('Unsupported download format.', 'danger')
+        return redirect(url_for('admin.view_attendance'))
+
+    hall_filter    = request.args.get('hall', '')
+    section_filter = request.args.get('section', '')
+    year_filter    = request.args.get('year', type=int)
+    _, hall_summary, ys_summary, _ = _attendance_report_data(
+        hall_filter, section_filter, year_filter)
+
+    hall_rows = []
+    for hall, stats in hall_summary.items():
+        pct = round((stats['present'] / stats['total'] * 100), 1) if stats['total'] else 0
+        hall_rows.append({
+            'Hall No.': hall,
+            'Total Students': stats['total'],
+            'Present': stats['present'],
+            'Absent': stats['absent'],
+            'Attendance %': pct,
+        })
+
+    year_rows = []
+    for yr in range(1, 5):
+        row = {'Year': ['','I','II','III','IV'][yr]}
+        year_total = year_absent = 0
+        for sec in SECTIONS:
+            d = ys_summary[yr][sec]
+            row[f'Section {sec}'] = (
+                f"Present {d['present']} / Absent {d['absent']} / Total {d['total']}"
+                if d['total'] else '-'
+            )
+            year_total += d['total']
+            year_absent += d['absent']
+        row['Year Total'] = f'{year_total} total, {year_absent} absent' if year_total else '-'
+        year_rows.append(row)
+
+    label = ''
+    if hall_filter: label += f'_Hall{hall_filter}'
+    if year_filter: label += f'_Year{year_filter}'
+    if section_filter: label += f'_Section{section_filter}'
+    today_label = datetime.now().strftime('%Y%m%d')
+
+    if fmt == 'excel':
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Hall Summary'
+        _write_summary_sheet(ws, hall_rows)
+        ys = wb.create_sheet('Year Section Summary')
+        _write_summary_sheet(ys, year_rows)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(buf, as_attachment=True,
+            download_name=f'attendance_summary{label}_{today_label}.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=24, rightMargin=24, topMargin=30, bottomMargin=24)
+    styles = getSampleStyleSheet()
+    filters = []
+    if hall_filter: filters.append(f'Hall {hall_filter}')
+    if year_filter: filters.append(f'Year {year_filter}')
+    if section_filter: filters.append(f'Section {section_filter}')
+    title = 'Attendance Summary'
+    if filters:
+        title += ' | ' + ', '.join(filters)
+    els = [Paragraph(title, styles['Title']),
+           Paragraph(f'Generated: {datetime.now().strftime("%d %b %Y %H:%M")}', styles['Normal']),
+           Spacer(1, 12)]
+    els.append(Paragraph('Hall-wise Summary', styles['Heading2']))
+    els.append(_pdf_table(
+        [['Hall No.', 'Total Students', 'Present', 'Absent', 'Attendance %']] +
+        [[r['Hall No.'], r['Total Students'], r['Present'], r['Absent'], f"{r['Attendance %']}%"]
+         for r in hall_rows],
+        colors.HexColor('#1A237E')
+    ))
+    els.append(Spacer(1, 14))
+    els.append(Paragraph('Year / Section Summary', styles['Heading2']))
+    ys_headers = ['Year'] + [f'Section {s}' for s in SECTIONS] + ['Year Total']
+    els.append(_pdf_table(
+        [ys_headers] + [[r[h] for h in ys_headers] for r in year_rows],
+        colors.HexColor('#0277BD')
+    ))
+    doc.build(els)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+        download_name=f'attendance_summary{label}_{today_label}.pdf',
+        mimetype='application/pdf')
+
+
+def _write_summary_sheet(ws, rows):
+    from openpyxl.styles import Font, PatternFill, Alignment
+    if not rows:
+        ws.cell(1, 1, 'No data')
+        return
+    hdrs = list(rows[0].keys())
+    for ci, h in enumerate(hdrs, 1):
+        cell = ws.cell(1, ci, h)
+        cell.font = Font(bold=True, color='FFFFFF', name='Arial')
+        cell.fill = PatternFill('solid', fgColor='1A237E')
+        cell.alignment = Alignment(horizontal='center')
+    for ri, row in enumerate(rows, 2):
+        for ci, h in enumerate(hdrs, 1):
+            ws.cell(ri, ci, row[h])
+    for col in ws.columns:
+        ws.column_dimensions[col[0].column_letter].width = 24
+
+
+def _pdf_table(data, header_color):
+    from reportlab.lib import colors
+    from reportlab.platypus import Table, TableStyle
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), header_color),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F5F7FF')]),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    return table
+
+
 # ─── MY HALLS (invigilator) ──────────────────────────────────────────────────
 @admin_bp.route('/my-halls')
 @login_required
 def my_halls():
     can_view_all = (
-        current_user.role in ('admin', 'hod', 'coordinator', 'tutor', 'subject_staff') or
-        current_user.secondary_role in ('hod', 'coordinator', 'tutor', 'subject_staff')
+        current_user.role in ('admin', 'hod', 'coordinator') or
+        current_user.secondary_role in ('hod', 'coordinator')
     )
     if can_view_all:
         halls = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
     else:
-        halls = SeatingAllotment.query.filter_by(
-            invigilator_id=current_user.id).order_by(SeatingAllotment.hall_number).all()
-    hall_numbers = list({h.hall_number for h in halls})
+        halls = SeatingAllotment.query.filter(
+            (SeatingAllotment.invigilator_id == None) |
+            (SeatingAllotment.invigilator_id == current_user.id)
+        ).order_by(SeatingAllotment.hall_number).all()
+    hall_numbers = sorted({h.hall_number for h in halls})
     hall_status = {}
     for hn in hall_numbers:
         rows = SeatingAllotment.query.filter_by(hall_number=hn).all()
-        total = sum((r.total_students or r.num_students or len(r.get_register_numbers())) for r in rows)
-        marked = ExamAttendance.query.filter_by(hall_number=hn).count()
+        if not can_view_all:
+            rows = [r for r in rows if r.invigilator_id in (None, current_user.id)]
+        total = sum(_allotment_student_count(r) for r in rows)
+        seating_ids = [r.id for r in rows]
+        marked = ExamAttendance.query.filter(
+            ExamAttendance.seating_id.in_(seating_ids)
+        ).count() if seating_ids else 0
         hall_status[hn] = {'total': total, 'marked': marked}
     return render_template('admin/my_halls.html',
                            halls=halls, hall_numbers=hall_numbers, hall_status=hall_status)

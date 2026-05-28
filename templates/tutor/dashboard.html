@@ -52,6 +52,49 @@
   <a href="{{ url_for('tutor.dashboard') }}" class="btn btn-outline btn-sm">✕ Clear</a>
 </form>
 
+<!-- Class Absentees -->
+<div class="card mb-4" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>🚫 My Class Absentees ({{ absence_records|length }})</h3>
+    {% if assigned_year and assigned_section %}
+    <span class="badge badge-info">Year {{ assigned_year }} / Section {{ assigned_section }}</span>
+    {% endif %}
+  </div>
+  {% if absence_records %}
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>#</th><th>Subject</th><th>CIA</th><th>Semester</th><th>Students</th><th>Uploaded By</th><th>Date</th></tr></thead>
+      <tbody>
+        {% for rec in absence_records %}
+        {% set students = rec.get_students() %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><div class="fw-bold">{{ rec.subject.subject_name }}</div><div class="text-muted">{{ rec.subject.subject_code }}</div></td>
+          <td><span class="badge badge-primary">CIA {{ rec.cia_number }}</span></td>
+          <td>Sem {{ rec.semester or '-' }}</td>
+          <td>
+            <span class="badge badge-warning">{{ students|length }} students</span>
+            {% if students %}
+            <div style="font-size:11px;color:#6b7280;margin-top:4px;">
+              {% for s in students[:3] %}
+              <div>{{ s.reg_no or s.register_number or s.reg }} - {{ s.name or s.student_name }}</div>
+              {% endfor %}
+              {% if students|length > 3 %}<div style="font-weight:700;color:#1a237e;">+ {{ students|length - 3 }} more</div>{% endif %}
+            </div>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;">{{ rec.uploader.name if rec.uploader else '-' }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ rec.uploaded_at.strftime('%d %b %Y') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state" style="padding:30px;"><p>No absentee lists for your assigned class yet.</p></div>
+  {% endif %}
+</div>
+
 <!-- Pending -->
 <div class="card mb-4" style="margin-bottom:24px;">
   <div class="card-header">
@@ -160,7 +203,7 @@
       <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
         <button type="button" onclick="closeModal('actionModal')" class="btn btn-outline">Cancel</button>
         <button type="submit" name="action" value="reject" class="btn btn-danger">❌ Reject</button>
-        <button type="submit" name="action" value="approve" class="btn btn-success" id="approveLabel">✅ Approve & Forward</button>
+        <button type="submit" name="action" value="approve" class="btn btn-success" id="approveLabel">✅ Forward</button>
       </div>
     </form>
   </div>
@@ -174,10 +217,10 @@ function openActionModal(appId, studentName, submissionType) {
   document.getElementById('actionForm').action = `/tutor/action/${appId}`;
   if (submissionType === 'pre') {
     document.getElementById('modalFlowNote').innerHTML = '📘 <strong>PRE</strong>: Approving forwards to <strong>HOD</strong>.';
-    document.getElementById('approveLabel').textContent = '✅ Approve → HOD';
+    document.getElementById('approveLabel').textContent = '✅ Forward → HOD';
   } else {
     document.getElementById('modalFlowNote').innerHTML = '📙 <strong>LATE</strong>: Approving forwards to <strong>Coordinator</strong>, then HOD.';
-    document.getElementById('approveLabel').textContent = '✅ Approve → Coordinator';
+    document.getElementById('approveLabel').textContent = '✅ Forward → Coordinator';
   }
   openModal('actionModal');
 }

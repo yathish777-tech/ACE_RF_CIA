@@ -176,28 +176,21 @@
           <!-- 7. Tutor -->
           <div class="form-group">
             <label class="form-label">Tutor <span class="required">*</span></label>
-            {% if auto_tutor %}
-            {# Auto-mapped based on year+section — hidden field, show read-only info #}
-            <input type="hidden" name="tutor_id" value="{{ auto_tutor.id }}">
-            <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;align-items:center;gap:10px;">
+            {% set initial_tutor_id = form.get('tutor_id', auto_tutor.id if auto_tutor else '') %}
+            <input type="hidden" name="tutor_id" id="tutorIdInput" value="{{ initial_tutor_id }}">
+            <div id="tutorAutoBox" style="padding:10px 14px;background:#f8fafc;border:1px solid #dbeafe;border-radius:8px;display:flex;align-items:center;gap:10px;min-height:62px;">
+              {% if auto_tutor %}
               <span style="font-size:18px;">👨‍🏫</span>
               <div>
                 <div style="font-weight:700;color:#065f46;">{{ auto_tutor.name }}</div>
                 <div style="font-size:12px;color:#6b7280;">{{ auto_tutor.email }}</div>
-                <div style="font-size:11px;color:#10b981;margin-top:2px;">✅ Auto-assigned based on your year &amp; section</div>
+                <div style="font-size:11px;color:#10b981;margin-top:2px;">Auto-assigned from Admin class mapping</div>
               </div>
+              {% else %}
+              <div style="font-size:12px;color:#6b7280;">Select semester and section to auto-assign tutor.</div>
+              {% endif %}
             </div>
-            {% else %}
-            {# Fallback: manual selection #}
-            <select name="tutor_id" class="form-control {% if errors.tutor_id %}is-invalid{% endif %}" required>
-              <option value="">-- Select Tutor --</option>
-              {% for t in tutors %}
-              <option value="{{ t.id }}" {% if form.get('tutor_id')==(t.id|string) %}selected{% endif %}>{{ t.name }}</option>
-              {% endfor %}
-            </select>
-            <div style="font-size:11px;color:#f59e0b;margin-top:4px;">⚠ Tutor could not be auto-assigned. Please select manually.</div>
             {% if errors.tutor_id %}<div class="inline-err">⚠️ {{ errors.tutor_id }}</div>{% endif %}
-            {% endif %}
           </div>
 
           <!-- 8. Submission Type -->
@@ -297,6 +290,14 @@ function onSectionChange(sec) {
       lbl.style.color = '#6b7280';
     }
   });
+
+  var semester = document.getElementById('semesterSelect').value;
+  if (semester) {
+    loadSubjects(parseInt(semester), sec);
+    resetStaff();
+    resetCIADate();
+  }
+  updateTutor();
 }
 
 /* ── Semester → Year label map ── */
@@ -337,16 +338,18 @@ document.getElementById('semesterSelect').addEventListener('change', function() 
   if (!sem) return;
 
   // Load subjects for this semester (section-aware via server)
-  loadSubjects(sem);
+  loadSubjects(sem, getSelectedSection());
+  updateTutor();
 });
 
-function loadSubjects(sem) {
+function loadSubjects(sem, section) {
   const subjectSel  = document.getElementById('subjectSelect');
   const loadingDiv  = document.getElementById('subjectLoading');
   subjectSel.innerHTML = '<option value="">-- Loading… --</option>';
   loadingDiv.style.display = 'block';
 
-  fetch(`/user/get_subjects_by_semester/${sem}`)
+  const sectionParam = section ? `?section=${encodeURIComponent(section)}` : '';
+  fetch(`/user/get_subjects_by_semester/${sem}${sectionParam}`)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       loadingDiv.style.display = 'none';
@@ -385,7 +388,7 @@ document.getElementById('subjectSelect').addEventListener('change', function() {
     setStaff(staffId, staffName);
   } else {
     // AJAX fallback
-    fetch('/user/get_staff/' + subjectId)
+    fetch('/user/get_staff/' + subjectId + '?section=' + encodeURIComponent(getSelectedSection()))
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (d.staff_id) setStaff(d.staff_id, d.staff_name);
@@ -488,6 +491,40 @@ function resetSubjects() {
 function resetStaff() {
   document.getElementById('staffSelect').innerHTML = '<option value="">-- Auto-filled on subject select --</option>';
 }
+function setTutor(id, name, email) {
+  document.getElementById('tutorIdInput').value = id || '';
+  var box = document.getElementById('tutorAutoBox');
+  box.style.background = '#f0fdf4';
+  box.style.borderColor = '#bbf7d0';
+  box.innerHTML =
+    '<span style="font-size:18px;">👨‍🏫</span>' +
+    '<div><div style="font-weight:700;color:#065f46;">' + (name || 'Tutor') + '</div>' +
+    '<div style="font-size:12px;color:#6b7280;">' + (email || '') + '</div>' +
+    '<div style="font-size:11px;color:#10b981;margin-top:2px;">Auto-assigned from Admin class mapping</div></div>';
+}
+function resetTutor(message) {
+  document.getElementById('tutorIdInput').value = '';
+  var box = document.getElementById('tutorAutoBox');
+  box.style.background = '#fff7ed';
+  box.style.borderColor = '#fed7aa';
+  box.innerHTML = '<div style="font-size:12px;color:#9a3412;">' + (message || 'No tutor mapped for this class. Contact Admin.') + '</div>';
+}
+function updateTutor() {
+  var sem = parseInt(document.getElementById('semesterSelect').value);
+  var year = SEMESTER_TO_YEAR[sem];
+  var section = getSelectedSection();
+  if (!year || !section) {
+    resetTutor('Select semester and section to auto-assign tutor.');
+    return;
+  }
+  fetch('/user/get_tutor_for_class/' + year + '/' + encodeURIComponent(section))
+    .then(function(r) {
+      if (!r.ok) throw new Error('missing');
+      return r.json();
+    })
+    .then(function(d) { setTutor(d.tutor_id, d.tutor_name, d.tutor_email); })
+    .catch(function() { resetTutor('No tutor is mapped for Year ' + year + ' Section ' + section + '. Contact Admin.'); });
+}
 function resetCIADate() {
   document.getElementById('ciaDateInput').value = '';
   document.getElementById('retestDateInfo').style.display = 'none';
@@ -496,6 +533,11 @@ function resetCIADate() {
   // Re-enable submit in case it was disabled
   var btn = document.getElementById('submitBtn');
   btn.disabled = false; btn.style.opacity = '1'; btn.title = '';
+}
+
+function getSelectedSection() {
+  var selected = document.querySelector('input[name="student_section"]:checked');
+  return selected ? selected.value : '{{ student_section }}';
 }
 
 /* ── FILE INPUT — show filename only, no page navigation ── */
@@ -540,6 +582,14 @@ document.getElementById('applyForm').addEventListener('submit', function(e) {
 
   // Check CIA date filled
   var ciaDate = document.getElementById('ciaDateInput').value;
+  var tutorId = document.getElementById('tutorIdInput').value;
+  if (!tutorId) {
+    e.preventDefault();
+    errBox.textContent = '⚠ Tutor is not mapped for the selected year and section. Contact Admin.';
+    errBox.style.display = 'block';
+    document.getElementById('tutorAutoBox').scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   if (!ciaDate) {
     e.preventDefault();
     errBox.textContent = '⚠️ CIA Exam Date is required. Please select subject and CIA number first, or enter the date manually.';
@@ -568,7 +618,8 @@ document.getElementById('applyForm').addEventListener('submit', function(e) {
     studentYear.value = SEMESTER_TO_YEAR[sem] || '';
 
     // Load subjects and then restore saved subject + staff
-    loadSubjects(sem);
+    loadSubjects(sem, getSelectedSection());
+    updateTutor();
 
     // After subjects load, we need to restore subject selection
     // We use a small delay to wait for fetch

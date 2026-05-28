@@ -5,16 +5,46 @@
 <style>
   /* ── ANIMATED BACKGROUND ── */
   .auth-page {
-    background: linear-gradient(135deg, #0d1642 0%, #1a237e 45%, #283593 100%);
+    background:
+      linear-gradient(90deg, rgba(6,13,46,0.70), rgba(26,35,126,0.42), rgba(0,0,0,0.48)),
+      url("{{ url_for('static', filename='campus_bg.jpg') }}") center / cover no-repeat,
+      linear-gradient(135deg, #0d1642 0%, #1a237e 45%, #283593 100%);
+    background-size: auto, 108% auto, auto;
+    background-position: center, center, center;
+    animation: campusPhotoDrift 22s ease-in-out infinite;
     overflow: hidden;
+  }
+  @keyframes campusPhotoDrift {
+    0%, 100% {
+      background-size: auto, 108% auto, auto;
+      background-position: center, 50% 50%, center;
+    }
+    50% {
+      background-size: auto, 114% auto, auto;
+      background-position: center, 54% 48%, center;
+    }
+  }
+  .auth-page::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.16) 45%, transparent 70%);
+    transform: translateX(-100%);
+    animation: campusLightSweep 8s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes campusLightSweep {
+    0%, 28% { transform: translateX(-100%); opacity: 0; }
+    42% { opacity: 1; }
+    70%, 100% { transform: translateX(100%); opacity: 0; }
   }
 
   /* Floating orbs */
   .orb {
     position: absolute;
     border-radius: 50%;
-    filter: blur(60px);
-    opacity: 0.18;
+    filter: blur(36px);
+    opacity: 0.10;
     animation: floatOrb var(--dur, 12s) ease-in-out infinite alternate;
   }
   .orb-1 { width: 520px; height: 520px; background: #e53935; top: -180px; right: -140px; --dur: 14s; }
@@ -32,8 +62,8 @@
     position: absolute;
     width: 3px; height: 3px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.55);
-    animation: rise var(--speed, 8s) linear infinite;
+    background: rgba(236,245,255,0.58);
+    animation: rise var(--speed, 8s) ease-in-out infinite;
     animation-delay: var(--delay, 0s);
   }
   @keyframes rise {
@@ -271,6 +301,7 @@
          style="color:#1a237e;font-weight:700;">Register here</a>
     </p>
   </div>
+  {% include '_page_credit.html' %}
 </div>
 
 <script>

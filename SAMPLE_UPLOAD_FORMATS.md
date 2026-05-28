@@ -38,19 +38,37 @@
 
 ---
 
-## 4. Seating Allotment (seating_allotment.xlsx) — NEW v10
+
+## 4. Student Details (student_details.xlsx)
+
+| register_number | name | email | section | year | phone |
+|---|---|---|---|---|---|
+| 2403617610421114 | Arun Kumar | arun@example.com | A | 2 | 9876543201 |
+| 2403617610421115 | Bala S | bala@example.com | A | 2 | |
+| 2403617610421116 | Charu R | charu@example.com | B | 2 | 9876543203 |
+
+Required columns: `register_number`, `name`, `email`, `section`, `year`.
+Optional columns: `phone`.
+New upload-created student accounts use default password `student123`.
+
+---
+
+## 5. Seating Allotment (seating_allotment.xlsx)
 
 | hall_number | year | section | register_numbers | no_of_students | total_no_of_students | invigilator_email |
 |---|---|---|---|---|---|---|
 | CSCR107 | 3 | A | 6176AC22UCS022, 6176AC22UCS105, 6176AC23UCS001-6176AC23UCS028 | 30 | 60 | leena@ace.edu |
 | CSCR107 | 2 | A | 2403617610421001-2403617610421018, (No Numbers: 19), 2403617610421020-2403617610422031 | 30 | 60 | leena@ace.edu |
+| CSCR108 | 2 | A | 2403617610421114 to 2403617610422167 | | | leena@ace.edu |
 | CSCR109 | 3 | A | 6176AC23UCS029, 6176AC23UCS030, (No Numbers: 31), 6176AC23UCS032-6176AC23UCS059 | 30 | 60 | ravi@ace.edu |
 
 **Supported register number formats:**
 - Single: `6176AC23UCS060`
 - Comma list: `6176AC22UCS022, 6176AC22UCS105`
-- Range: `6176AC23UCS001-6176AC23UCS028` (auto-expands)
+- Range: `6176AC23UCS001-6176AC23UCS028` or `2403617610421114 to 2403617610422167` (auto-expands)
 - Skip numbers: `(No Numbers: 19)` — skips that number in a range
+
+Only register numbers already present and active in Student Details are included in hall invigilation.
 
 ---
 
@@ -58,4 +76,5 @@
 1. Staff (with tutor handling_year/section)
 2. Subjects
 3. CIA Schedule
-4. Seating Allotment (assign invigilators via column or admin panel)
+4. Student Details
+5. Seating Allotment (assign invigilators via column or admin panel)

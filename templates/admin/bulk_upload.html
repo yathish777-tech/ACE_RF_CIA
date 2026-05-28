@@ -6,13 +6,12 @@
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
 <span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
 <a href="{{ url_for('admin.bulk_upload') }}" class="nav-item active"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_students') }}" class="nav-item {% if request.endpoint=='admin.manage_students' %}active{% endif %}"><span class="nav-icon">🎓</span> Students</a>
 <a href="{{ url_for('admin.manage_staff') }}" class="nav-item"><span class="nav-icon">👥</span> Manage Staff</a>
 <a href="{{ url_for('admin.manage_subjects') }}" class="nav-item"><span class="nav-icon">📚</span> Subjects</a>
 <a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item"><span class="nav-icon">📅</span> CIA Dates</a>
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
-<a href="{{ url_for('admin.view_absentees') }}" class="nav-item"><span class="nav-icon">🚫</span> Absentee Lists</a>
-<a href="{{ url_for('admin.view_absentees_subject') }}" class="nav-item {% if request.endpoint=='admin.view_absentees_subject' %}active{% endif %}"><span class="nav-icon">📖</span> Subject-wise Absent</a>
 <span class="nav-section-label" style="margin-top:10px;">Exam</span>
 <a href="{{ url_for('admin.seating_allotment') }}" class="nav-item {% if request.endpoint=='admin.seating_allotment' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allotment</a>
 <a href="{{ url_for('admin.view_attendance') }}" class="nav-item {% if request.endpoint=='admin.view_attendance' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance</a>
@@ -70,12 +69,12 @@
       </div>
       <div style="overflow-x:auto;margin-bottom:10px;">
         <table style="width:100%;border-collapse:collapse;font-size:10px;">
-          <thead><tr style="background:#1a237e;">
-            <th style="padding:5px;color:#fff;border:1px solid #283593;">staff_name</th>
-            <th style="padding:5px;color:#fff;border:1px solid #283593;">staff_email</th>
-            <th style="padding:5px;color:#fff;border:1px solid #283593;">role</th>
-            <th style="padding:5px;color:#fff;border:1px solid #283593;">handling_year</th>
-            <th style="padding:5px;color:#fff;border:1px solid #283593;">handling_section</th>
+          <thead><tr style="background:#eef2ff;">
+            <th style="padding:5px;color:#1a237e;border:1px solid #c7d2fe;">staff_name</th>
+            <th style="padding:5px;color:#1a237e;border:1px solid #c7d2fe;">staff_email</th>
+            <th style="padding:5px;color:#1a237e;border:1px solid #c7d2fe;">role</th>
+            <th style="padding:5px;color:#1a237e;border:1px solid #c7d2fe;">handling_year</th>
+            <th style="padding:5px;color:#1a237e;border:1px solid #c7d2fe;">handling_section</th>
           </tr></thead>
           <tbody>
             <tr style="background:#f5f7ff;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">Prof. Kavitha</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">kavitha@ace.edu</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">subject_staff</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">A</td></tr>
@@ -112,12 +111,12 @@
       </div>
       <div style="overflow-x:auto;margin-bottom:10px;">
         <table style="width:100%;border-collapse:collapse;font-size:10px;">
-          <thead><tr style="background:#2e7d32;">
-            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">subject_name</th>
-            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">subject_code</th>
-            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">semester</th>
-            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">section</th>
-            <th style="padding:5px;color:#fff;border:1px solid #1b5e20;">shsn</th>
+          <thead><tr style="background:#ecfdf5;">
+            <th style="padding:5px;color:#166534;border:1px solid #bbf7d0;">subject_name</th>
+            <th style="padding:5px;color:#166534;border:1px solid #bbf7d0;">subject_code</th>
+            <th style="padding:5px;color:#166534;border:1px solid #bbf7d0;">semester</th>
+            <th style="padding:5px;color:#166534;border:1px solid #bbf7d0;">section</th>
+            <th style="padding:5px;color:#166534;border:1px solid #bbf7d0;">shsn</th>
           </tr></thead>
           <tbody>
             <tr style="background:#f5fff5;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">Data Structures</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">A</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">kavitha@ace.edu</td></tr>
@@ -151,13 +150,13 @@
       </div>
       <div style="overflow-x:auto;margin-bottom:10px;">
         <table style="width:100%;border-collapse:collapse;font-size:10px;">
-          <thead><tr style="background:#e65100;">
-            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">subject_code</th>
-            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">semester</th>
-            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_number</th>
-            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_exam_date</th>
-            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_deadline_date</th>
-            <th style="padding:5px;color:#fff;border:1px solid #bf360c;">cia_retest_date</th>
+          <thead><tr style="background:#fff7ed;">
+            <th style="padding:5px;color:#9a3412;border:1px solid #fed7aa;">subject_code</th>
+            <th style="padding:5px;color:#9a3412;border:1px solid #fed7aa;">semester</th>
+            <th style="padding:5px;color:#9a3412;border:1px solid #fed7aa;">cia_number</th>
+            <th style="padding:5px;color:#9a3412;border:1px solid #fed7aa;">cia_exam_date</th>
+            <th style="padding:5px;color:#9a3412;border:1px solid #fed7aa;">cia_deadline_date</th>
+            <th style="padding:5px;color:#9a3412;border:1px solid #fed7aa;">cia_retest_date</th>
           </tr></thead>
           <tbody>
             <tr style="background:#fff8f0;"><td style="padding:4px 5px;border:1px solid #e0e0e0;">CS2201</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">4</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">1</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-09-10</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-09-16</td><td style="padding:4px 5px;border:1px solid #e0e0e0;">2024-09-20</td></tr>

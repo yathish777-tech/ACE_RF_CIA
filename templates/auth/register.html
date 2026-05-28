@@ -61,6 +61,7 @@
     </form>
     <p class="auth-footer-link fi6">Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a></p>
   </div>
+  {% include '_page_credit.html' %}
 </div>
 <script>
 (function(){const c=document.getElementById('pts');const cols=['rgba(255,255,255,.5)','rgba(144,164,251,.5)','rgba(229,57,53,.4)','rgba(66,165,245,.45)'];for(let i=0;i<14;i++){const p=document.createElement('div');p.className='particle';const sz=Math.random()*5+2;p.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;bottom:-10px;background:${cols[Math.floor(Math.random()*cols.length)]};animation-duration:${7+Math.random()*9}s;animation-delay:${Math.random()*8}s;`;c.appendChild(p);}})();

@@ -5,13 +5,14 @@
 
 {% block sidebar_nav %}
 <a href="{{ url_for('hod.dashboard') }}" class="nav-item active"><span class="nav-icon">🏠</span> Dashboard</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Overview</a>
 {% if current_user.secondary_role == 'subject_staff' or current_user.role == 'subject_staff' %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">📚</span> Staff Dashboard</a>
 {% endif %}
 <hr style="border:none;border-top:1px solid var(--color-border-secondary);margin:10px 0;">
 <span class="nav-section-label">Download Applications</span>
-<a href="{{ url_for('hod.download_applications', fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="nav-item"><span class="nav-icon">📥</span> Excel</a>
-<a href="{{ url_for('hod.download_applications', fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="nav-item"><span class="nav-icon">📄</span> PDF</a>
+<a href="{{ url_for('hod.download_applications', fmt='excel') }}?year={{ year_filter or 1 }}" class="nav-item js-year-download" data-download-base="{{ url_for('hod.download_applications', fmt='excel') }}"><span class="nav-icon">📥</span> Excel</a>
+<a href="{{ url_for('hod.download_applications', fmt='pdf') }}?year={{ year_filter or 1 }}" class="nav-item js-year-download" data-download-base="{{ url_for('hod.download_applications', fmt='pdf') }}"><span class="nav-icon">📄</span> PDF</a>
 {% endblock %}
 
 {% block head %}
@@ -29,8 +30,8 @@
 <div class="page-header">
   <div><h2>Welcome, {{ current_user.name }}! 🏛️</h2><p>HOD-level approval & retest window management.</p></div>
   <div style="display:flex;gap:8px;">
-    <a href="{{ url_for('hod.download_applications', fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-outline">📥 Excel</a>
-    <a href="{{ url_for('hod.download_applications', fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}{% if section_filter %}&section={{ section_filter }}{% endif %}" class="btn btn-primary">📄 PDF</a>
+    <a href="{{ url_for('hod.download_applications', fmt='excel') }}?year={{ year_filter or 1 }}" class="btn btn-outline js-year-download" data-download-base="{{ url_for('hod.download_applications', fmt='excel') }}">📥 Excel</a>
+    <a href="{{ url_for('hod.download_applications', fmt='pdf') }}?year={{ year_filter or 1 }}" class="btn btn-primary js-year-download" data-download-base="{{ url_for('hod.download_applications', fmt='pdf') }}">📄 PDF</a>
   </div>
 </div>
 
@@ -42,88 +43,76 @@
   <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-info"><div class="stat-value">{{ stats.rejected }}</div><div class="stat-label">Rejected</div></div></div>
 </div>
 
-<!-- Year-wise Section-wise Applications -->
+<!-- Year-wise Applications -->
 <div class="card" style="margin-bottom:24px;">
   <div class="card-header">
-    <h3>📊 Year-wise & Section-wise Applications</h3>
-    <span class="badge badge-info">Click year and section to filter</span>
+    <h3>📊 Year-wise Applications</h3>
+    <span class="badge badge-info">Use the year tabs to view aggregate year data</span>
   </div>
   <div class="card-body">
     <!-- Year Tabs -->
     <div style="display:flex;gap:0;margin-bottom:0;border-bottom:1.5px solid #e0e7ff;">
       {% for year in range(1,5) %}
-      <div class="year-tab {% if loop.first %}active{% endif %}" onclick="showYear({{ year }})" id="yearTab{{ year }}">
+      <div class="year-tab {% if year == (year_filter or 1) %}active{% endif %}" onclick="showYear({{ year }})" id="yearTab{{ year }}">
         Year {{ year }}
         <span style="font-size:10px;background:#e0e7ff;color:#1a237e;padding:2px 6px;border-radius:10px;margin-left:4px;">
-          {{ year_section_stats[year]['A'].total + year_section_stats[year]['B'].total + year_section_stats[year]['C'].total }}
+          {{ year_stats[year].total }}
         </span>
       </div>
       {% endfor %}
     </div>
 
     {% for year in range(1,5) %}
-    <div id="yearPanel{{ year }}" class="year-panel {% if loop.first %}active{% endif %}" style="padding-top:16px;">
-      <!-- Section Buttons -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
-        <span style="font-size:12px;font-weight:700;color:#374151;">Section:</span>
-        <button class="sec-btn active" onclick="showSection({{ year }},'A',this)" id="secBtn{{ year }}A">A ({{ year_section_stats[year]['A'].total }})</button>
-        <button class="sec-btn" onclick="showSection({{ year }},'B',this)" id="secBtn{{ year }}B">B ({{ year_section_stats[year]['B'].total }})</button>
-        <button class="sec-btn" onclick="showSection({{ year }},'C',this)" id="secBtn{{ year }}C">C ({{ year_section_stats[year]['C'].total }})</button>
-        <a href="{{ url_for('hod.dashboard') }}?year={{ year }}" class="btn btn-outline btn-sm" style="margin-left:auto;">Filter Dashboard</a>
+    <div id="yearPanel{{ year }}" class="year-panel {% if year == (year_filter or 1) %}active{% endif %}" style="padding-top:16px;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+        {% set ys = year_stats[year] %}
+        <div style="padding:10px 14px;background:#e8eaf6;border-radius:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:800;color:#1a237e;">{{ ys.total }}</div>
+          <div style="font-size:11px;color:#6b7280;">Total</div>
+        </div>
+        <div style="padding:10px 14px;background:#fff3e0;border-radius:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:800;color:#e65100;">{{ ys.pending }}</div>
+          <div style="font-size:11px;color:#6b7280;">Pending</div>
+        </div>
+        <div style="padding:10px 14px;background:#e8f5e9;border-radius:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:800;color:#2e7d32;">{{ ys.approved }}</div>
+          <div style="font-size:11px;color:#6b7280;">Approved</div>
+        </div>
+        <div style="padding:10px 14px;background:#ffebee;border-radius:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:800;color:#c62828;">{{ ys.rejected }}</div>
+          <div style="font-size:11px;color:#6b7280;">Rejected</div>
+        </div>
       </div>
 
-      {% for sec in sections %}
-      <div id="secPanel{{ year }}{{ sec }}" style="display:{% if loop.first %}block{% else %}none{% endif %};">
-        <!-- Stat mini cards -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
-          {% set sd = year_section_stats[year][sec] %}
-          <div style="padding:10px 14px;background:#e8eaf6;border-radius:8px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:#1a237e;">{{ sd.total }}</div>
-            <div style="font-size:11px;color:#6b7280;">Total</div>
-          </div>
-          <div style="padding:10px 14px;background:#fff3e0;border-radius:8px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:#e65100;">{{ sd.pending }}</div>
-            <div style="font-size:11px;color:#6b7280;">Pending</div>
-          </div>
-          <div style="padding:10px 14px;background:#e8f5e9;border-radius:8px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:#2e7d32;">{{ sd.approved }}</div>
-            <div style="font-size:11px;color:#6b7280;">Approved</div>
-          </div>
-          <div style="padding:10px 14px;background:#ffebee;border-radius:8px;text-align:center;">
-            <div style="font-size:18px;font-weight:800;color:#c62828;">{{ sd.rejected }}</div>
-            <div style="font-size:11px;color:#6b7280;">Rejected</div>
-          </div>
-        </div>
-        {% if sd.apps %}
-        <div style="overflow-x:auto;max-height:300px;overflow-y:auto;">
-          <table>
-            <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Staff</th><th>HOD</th><th>Final</th></tr></thead>
-            <tbody>
-              {% for app in sd.apps[:20] %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td><div class="fw-bold" style="font-size:12px;">{{ app.student_name }}</div><div class="text-muted" style="font-size:10px;">{{ app.register_number }}</div></td>
-                <td style="font-size:11px;">{{ app.subject.subject_name }}</td>
-                <td><span class="badge badge-primary" style="font-size:9px;">CIA {{ app.cia_number }}</span></td>
-                <td>{{ type_badge(app.submission_type) }}</td>
-                <td>{{ status_badge(app.staff_status) }}</td>
-                <td>{{ status_badge(app.hod_status) }}</td>
-                <td>{{ status_badge(app.final_status) }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% if sd.apps|length > 20 %}
-        <div style="text-align:center;padding:8px;font-size:11px;color:#6b7280;">
-          Showing 20 of {{ sd.apps|length }}. <a href="{{ url_for('hod.dashboard') }}?year={{ year }}&section={{ sec }}">View all →</a>
-        </div>
-        {% endif %}
-        {% else %}
-        <div class="empty-state" style="padding:20px;text-align:center;color:#9ca3af;">No applications for Year {{ year }} Section {{ sec }}.</div>
-        {% endif %}
+      {% if ys.apps %}
+      <div style="overflow-x:auto;max-height:300px;overflow-y:auto;">
+        <table>
+          <thead><tr><th>#</th><th>Student</th><th>Year/Sec</th><th>Subject</th><th>CIA</th><th>Type</th><th>Staff</th><th>HOD</th><th>Final</th></tr></thead>
+          <tbody>
+            {% for app in ys.apps[:20] %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td><div class="fw-bold" style="font-size:12px;">{{ app.student_name }}</div><div class="text-muted" style="font-size:10px;">{{ app.register_number }}</div></td>
+              <td><span class="badge badge-primary" style="font-size:10px;">Y{{ app.student_year }}/{{ app.student_section }}</span></td>
+              <td style="font-size:11px;">{{ app.subject.subject_name }}</td>
+              <td><span class="badge badge-primary" style="font-size:9px;">CIA {{ app.cia_number }}</span></td>
+              <td>{{ type_badge(app.submission_type) }}</td>
+              <td>{{ status_badge(app.staff_status) }}</td>
+              <td>{{ status_badge(app.hod_status) }}</td>
+              <td>{{ status_badge(app.final_status) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% endfor %}
+      {% if ys.apps|length > 20 %}
+      <div style="text-align:center;padding:8px;font-size:11px;color:#6b7280;">
+        Showing 20 of {{ ys.apps|length }}. <a href="{{ url_for('hod.dashboard') }}?year={{ year }}">View all →</a>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="empty-state" style="padding:20px;text-align:center;color:#9ca3af;">No applications for Year {{ year }}.</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -285,6 +274,12 @@ function showYear(year) {
     document.getElementById('yearTab'+y).classList.toggle('active', y===year);
     document.getElementById('yearPanel'+y).classList.toggle('active', y===year);
   }
+  document.querySelectorAll('.js-year-download').forEach(link => {
+    link.href = link.dataset.downloadBase + '?year=' + year;
+  });
+  const url = new URL(window.location.href);
+  url.searchParams.set('year', year);
+  window.history.replaceState({}, '', url);
 }
 function showSection(year, sec, btn) {
   ['A','B','C'].forEach(s => {

@@ -1,11 +1,13 @@
 import io
 from flask import Blueprint, render_template, redirect, url_for, flash, request, send_file
 from flask_login import login_required, current_user
-from models import db, RetestApplication, SeatingAllotment, ExamAttendance
+from sqlalchemy import and_
+from models import db, RetestApplication, SeatingAllotment, ExamAttendance, AbsenceRecord
 from datetime import datetime
 from functools import wraps
 
 tutor_bp = Blueprint('tutor', __name__)
+SEMESTER_TO_YEAR = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4}
 
 def tutor_required(f):
     @wraps(f)
@@ -17,17 +19,74 @@ def tutor_required(f):
     return decorated
 
 
+def _assigned_class():
+    year = getattr(current_user, 'handling_year', None)
+    section = (getattr(current_user, 'handling_section', '') or '').upper().strip()
+    return year, section
+
+
+def _class_scope_filter(year, section):
+    if year and section:
+        return and_(
+            RetestApplication.student_year == year,
+            RetestApplication.student_section == section
+        )
+    return RetestApplication.tutor_id == current_user.id
+
+
+def _student_matches_class(record, student, year, section):
+    if not year or not section:
+        return False
+    student_year = student.get('year') or student.get('yr')
+    try:
+        student_year = int(float(student_year)) if student_year else None
+    except (TypeError, ValueError):
+        student_year = None
+    student_section = (student.get('section') or student.get('sec') or '').upper().strip()
+    if not student_year and record.semester:
+        student_year = SEMESTER_TO_YEAR.get(record.semester)
+    if not student_section and record.uploader and record.uploader.handling_section:
+        student_section = record.uploader.handling_section.upper()
+    return student_year == year and student_section == section
+
+
+def _class_absence_records(year, section):
+    if not year or not section:
+        return []
+    records = AbsenceRecord.query.order_by(AbsenceRecord.uploaded_at.desc()).all()
+    visible = []
+    for record in records:
+        students = record.get_students()
+        if students and any(_student_matches_class(record, student, year, section) for student in students):
+            visible.append(record)
+        elif not students:
+            record_year = SEMESTER_TO_YEAR.get(record.semester) if record.semester else None
+            record_section = (record.uploader.handling_section if record.uploader and record.uploader.handling_section else '').upper()
+            if record_year == year and (not record_section or record_section == section):
+                visible.append(record)
+    return visible
+
+
 @tutor_bp.route('/dashboard')
 @login_required
 @tutor_required
 def dashboard():
     year_filter    = request.args.get('year', type=int)
     section_filter = request.args.get('section', '')
+    assigned_year, assigned_section = _assigned_class()
 
-    pending_q = RetestApplication.query.filter_by(
-        tutor_id=current_user.id, staff_status='approved', tutor_status='pending')
+    if not year_filter and assigned_year:
+        year_filter = assigned_year
+    if not section_filter and assigned_section:
+        section_filter = assigned_section
+
+    scope_filter = _class_scope_filter(assigned_year, assigned_section)
+    pending_q = RetestApplication.query.filter(
+        scope_filter,
+        RetestApplication.staff_status == 'approved',
+        RetestApplication.tutor_status == 'pending')
     reviewed_q = RetestApplication.query.filter(
-        RetestApplication.tutor_id == current_user.id,
+        scope_filter,
         RetestApplication.tutor_status.in_(['approved', 'rejected']))
 
     if year_filter:
@@ -48,6 +107,9 @@ def dashboard():
     }
     return render_template('tutor/dashboard.html',
                            pending=pending, reviewed=reviewed, stats=stats,
+                           absence_records=_class_absence_records(assigned_year, assigned_section),
+                           assigned_year=assigned_year,
+                           assigned_section=assigned_section,
                            year_filter=year_filter, section_filter=section_filter,
                            sections=['A', 'B', 'C'])
 
@@ -56,8 +118,12 @@ def dashboard():
 @login_required
 @tutor_required
 def action(app_id):
-    application = RetestApplication.query.filter_by(
-        id=app_id, tutor_id=current_user.id).first_or_404()
+    assigned_year, assigned_section = _assigned_class()
+    application = RetestApplication.query.filter(
+        RetestApplication.id == app_id,
+        _class_scope_filter(assigned_year, assigned_section)
+    ).first_or_404()
+    application.tutor_id = current_user.id
     act    = request.form.get('action')
     remark = request.form.get('remark', '').strip()
     application.tutor_status = 'approved' if act == 'approve' else 'rejected'
@@ -92,8 +158,13 @@ def action(app_id):
 def download_applications(fmt):
     year_filter    = request.args.get('year', type=int)
     section_filter = request.args.get('section', '')
+    assigned_year, assigned_section = _assigned_class()
+    if not year_filter and assigned_year:
+        year_filter = assigned_year
+    if not section_filter and assigned_section:
+        section_filter = assigned_section
 
-    query = RetestApplication.query.filter_by(tutor_id=current_user.id)
+    query = RetestApplication.query.filter(_class_scope_filter(assigned_year, assigned_section))
     if year_filter:    query = query.filter_by(student_year=year_filter)
     if section_filter: query = query.filter_by(student_section=section_filter)
     apps = query.order_by(RetestApplication.submitted_at.desc()).all()
@@ -177,8 +248,12 @@ def download_applications(fmt):
 @tutor_required
 def retransmit(app_id):
     """Tutor can retransmit a mistakenly-rejected application from the rejected stage."""
-    app = RetestApplication.query.filter_by(
-        id=app_id, tutor_id=current_user.id).first_or_404()
+    assigned_year, assigned_section = _assigned_class()
+    app = RetestApplication.query.filter(
+        RetestApplication.id == app_id,
+        _class_scope_filter(assigned_year, assigned_section)
+    ).first_or_404()
+    app.tutor_id = current_user.id
 
     if app.final_status != 'rejected':
         flash('Only rejected applications can be retransmitted.', 'warning')

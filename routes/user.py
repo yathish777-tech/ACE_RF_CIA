@@ -1,8 +1,8 @@
-import os, uuid
+import os, uuid, re
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, current_app, jsonify, send_from_directory, abort)
 from flask_login import login_required, current_user
-from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection
+from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection, AbsenceRecord, ExamAttendance
 from datetime import datetime, date
 from functools import wraps
 
@@ -48,7 +48,7 @@ def dashboard():
 @login_required
 def get_subjects_by_semester(semester):
 
-    student_section = getattr(current_user, 'section', 'A')
+    student_section = (request.args.get('section') or getattr(current_user, 'section', 'A') or 'A').upper().strip()
 
     sss_list = SubjectStaffSection.query.filter_by(
         semester=semester,
@@ -82,6 +82,101 @@ def get_subjects_by_semester(semester):
     return jsonify({'subjects': subject_data})
 
 
+@user_bp.route('/get_staff/<int:subject_id>')
+@login_required
+def get_staff(subject_id):
+    section = (request.args.get('section') or getattr(current_user, 'section', '') or '').upper().strip()
+    sss = SubjectStaffSection.query.filter_by(subject_id=subject_id, section=section).first()
+    if sss and sss.staff:
+        return jsonify({'staff_id': sss.staff_id, 'staff_name': sss.staff.name})
+    subject = Subject.query.get(subject_id)
+    if subject and subject.staff:
+        return jsonify({'staff_id': subject.staff_id, 'staff_name': subject.staff.name})
+    return jsonify({})
+
+
+def _normalize_register_number(value):
+    return re.sub(r'\s+', '', str(value or '')).upper()
+
+
+def _find_tutor_for_class(year, section):
+    section = (section or '').upper().strip()
+    if not year or not section:
+        return None
+    return User.query.filter(
+        (User.role == 'tutor') | (User.secondary_role == 'tutor'),
+        User.handling_year == year,
+        db.func.upper(User.handling_section) == section,
+        User.is_active == True
+    ).order_by(User.name).first()
+
+
+@user_bp.route('/get_tutor_for_class/<int:year>/<string:section>')
+@login_required
+@student_required
+def get_tutor_for_class(year, section):
+    tutor = _find_tutor_for_class(year, section)
+    if not tutor:
+        return jsonify({'error': 'No tutor mapped for this class'}), 404
+    return jsonify({
+        'tutor_id': tutor.id,
+        'tutor_name': tutor.name,
+        'tutor_email': tutor.email
+    })
+
+
+def _student_has_absentee_record(subject_id, cia_number, register_number, year=None, section=None):
+    if not subject_id or not cia_number or not register_number:
+        return False
+    register_number = _normalize_register_number(register_number)
+    if not register_number:
+        return False
+    section = (section or '').upper().strip()
+
+    absence_records = AbsenceRecord.query.filter_by(
+        subject_id=subject_id,
+        cia_number=cia_number
+    ).all()
+    for record in absence_records:
+        for student in record.get_students():
+            student_reg = _normalize_register_number(
+                student.get('register_number') or student.get('reg_no') or
+                student.get('register_no') or student.get('reg')
+            )
+            if student_reg != register_number:
+                continue
+
+            student_year = student.get('year') or student.get('yr')
+            student_section = (student.get('section') or student.get('sec') or '').upper().strip()
+            try:
+                student_year = int(float(student_year)) if student_year else None
+            except (TypeError, ValueError):
+                student_year = None
+
+            if year and student_year and student_year != year:
+                continue
+            if section and student_section and student_section != section:
+                continue
+            return True
+    return False
+
+
+def _student_marked_absent_on_exam_date(register_number, exam_date, year=None, section=None):
+    register_number = _normalize_register_number(register_number)
+    if not register_number or not exam_date:
+        return False
+    query = ExamAttendance.query.filter(
+        db.func.upper(ExamAttendance.register_number) == register_number,
+        ExamAttendance.exam_date == exam_date,
+        ExamAttendance.status == 'absent'
+    )
+    if year:
+        query = query.filter(ExamAttendance.year == year)
+    if section:
+        query = query.filter(db.func.upper(ExamAttendance.section) == section.upper())
+    return query.first() is not None
+
+
 # =========================
 # GET CIA INFO (FIXED)
 # =========================
@@ -112,6 +207,7 @@ def get_cia_info(subject_id, cia_num):
     return jsonify({
         'exam_date': cia.exam_date.strftime('%Y-%m-%d') if cia.exam_date else None,
         'end_date': cia.application_end_date.strftime('%Y-%m-%d') if cia.application_end_date else None,
+        'retest_date': cia.retest_date.strftime('%Y-%m-%d') if cia.retest_date else None,
         'retest_open': retest_open,
         'is_open': is_open,
         'end_date_display': end_date_display
@@ -126,35 +222,16 @@ def get_cia_info(subject_id, cia_num):
 @student_required
 def apply():
 
-    # Auto-resolve tutor based on student year+section (Feature 3 - Tutor Auto-mapping)
     student_section = (getattr(current_user, 'section', '') or '').upper().strip()
-    _yr = getattr(current_user, 'year', None)
-    student_year = YEAR_LABEL.get(_yr, '') if _yr else ''
-
-    auto_tutor = None
-    if _yr and student_section:
-        auto_tutor = User.query.filter(
-            (User.role == 'tutor') | (User.secondary_role == 'tutor'),
-            User.handling_year    == _yr,
-            User.handling_section == student_section,
-            User.is_active        == True
-        ).first()
-
-    # Fallback list shown only if auto-map fails
-    tutors = User.query.filter(
-        (User.role == 'tutor') | (User.secondary_role == 'tutor'),
-        User.is_active == True
-    ).all()
+    student_year_num = getattr(current_user, 'year', None)
+    student_year = YEAR_LABEL.get(student_year_num, '') if student_year_num else ''
+    auto_tutor = _find_tutor_for_class(student_year_num, student_section)
 
     form   = {}
     errors = {}
 
     if request.method == 'POST':
         form = {k: v.strip() for k, v in request.form.items() if isinstance(v, str)}
-
-        # Auto-inject tutor_id when auto-mapped and form didn't send one
-        if not form.get('tutor_id') and auto_tutor:
-            form['tutor_id'] = str(auto_tutor.id)
 
         selected_section = (form.get('student_section') or student_section).upper().strip()
         if selected_section:
@@ -170,6 +247,20 @@ def apply():
             if not form.get(field):
                 errors[field] = f'{field.replace("_", " ").title()} is required.'
 
+        if form.get('register_number') and _normalize_register_number(form.get('register_number')) != _normalize_register_number(current_user.register_number):
+            errors['register_number'] = 'Use your own registered register number.'
+
+        selected_semester = None
+        if form.get('semester') and form['semester'].isdigit():
+            selected_semester = int(form['semester'])
+        selected_year = SEMESTER_TO_YEAR.get(selected_semester)
+        mapped_tutor = _find_tutor_for_class(selected_year, selected_section)
+        if mapped_tutor:
+            form['tutor_id'] = str(mapped_tutor.id)
+            errors.pop('tutor_id', None)
+        else:
+            errors['tutor_id'] = 'No active tutor is mapped for the selected year and section. Contact Admin.'
+
         if form.get('reason_type') == 'others' and not form.get('reason_detail'):
             errors['reason_detail'] = 'Please specify your reason.'
 
@@ -179,15 +270,34 @@ def apply():
                 subject_id=int(form['subject_id'])
             ).first()
             if existing:
-                errors['subject_id'] = 'You already applied for this subject.'
+                errors['subject_id'] = 'You already applied for this subject. One student can apply only once per subject, so another CIA retest for the same subject is not allowed.'
 
         if form.get('subject_id') and form.get('cia_number'):
+            try:
+                subject_id = int(form['subject_id'])
+                cia_number = int(form['cia_number'])
+            except ValueError:
+                subject_id = cia_number = None
+
             cia = CIADate.query.filter_by(
-                subject_id=int(form['subject_id']),
-                cia_number=int(form['cia_number'])
-            ).first()
-            if cia and not cia.is_application_open():
+                subject_id=subject_id,
+                cia_number=cia_number
+            ).first() if subject_id and cia_number else None
+            if not cia:
+                errors['cia_number'] = 'CIA date is not configured for the selected subject.'
+            elif not cia.is_application_open():
                 errors['cia_number'] = 'Application window closed.'
+            elif not (
+                _student_has_absentee_record(
+                    subject_id, cia_number, form.get('register_number', ''),
+                    selected_year, selected_section
+                ) or
+                _student_marked_absent_on_exam_date(
+                    form.get('register_number', ''), cia.exam_date,
+                    selected_year, selected_section
+                )
+            ):
+                errors['subject_id'] = 'Only students marked absent for this CIA exam date can apply for this retest.'
 
         file = request.files.get('attachment')
         if not file or not file.filename:
@@ -230,7 +340,6 @@ def apply():
 
     return render_template(
         'user/apply.html',
-        tutors=tutors,
         auto_tutor=auto_tutor,
         form=form,
         errors=errors,
@@ -271,7 +380,13 @@ def view_attachment(app_id):
         or ((current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff')
             and application.staff_id == current_user.id)
         or ((current_user.role == 'tutor' or current_user.secondary_role == 'tutor')
-            and application.tutor_id == current_user.id)
+            and (
+                application.tutor_id == current_user.id or
+                (
+                    getattr(current_user, 'handling_year', None) == application.student_year and
+                    (getattr(current_user, 'handling_section', '') or '').upper() == (application.student_section or '').upper()
+                )
+            ))
         or ((current_user.role == 'coordinator' or current_user.secondary_role == 'coordinator')
             and application.submission_type == 'late')
     )

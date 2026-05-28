@@ -5,6 +5,7 @@ Handles: login, logout, register, forgot_password, verify_otp,
 """
 
 import random
+import re
 import string
 from datetime import datetime, timedelta
 from models import User
@@ -100,7 +101,7 @@ def register():
 
     if request.method == 'POST':
         name            = request.form.get('name', '').strip()
-        register_number = request.form.get('register_number', '').strip()
+        register_number = re.sub(r'\s+', '', request.form.get('register_number', '').strip()).upper()
         email           = request.form.get('email', '').strip().lower()
         phone           = request.form.get('phone', '').strip()
         department      = request.form.get('department', '').strip()
@@ -122,23 +123,42 @@ def register():
             flash('Password must be at least 6 characters.', 'danger')
             return redirect(url_for('auth.register'))
 
-        if User.query.filter(db.func.lower(User.email) == email).first():
+        existing_email = User.query.filter(db.func.lower(User.email) == email).first()
+        existing_register = User.query.filter(
+            User.role == 'student',
+            db.func.upper(User.register_number) == register_number
+        ).first()
+
+        if existing_email and (not existing_register or existing_email.id != existing_register.id):
             flash('An account with this email already exists.', 'danger')
             return redirect(url_for('auth.register'))
 
-        user = User(
-            name=name,
-            email=email,
-            phone=phone,
-            department=department,
-            role='student',
-            register_number=register_number,
-            year=year,
-            section=section if section else None,
-            is_active=True,
-        )
+        if existing_register:
+            if not existing_register.email.endswith('@student.local') and existing_register.email.lower() != email:
+                flash('An account with this register number already exists.', 'danger')
+                return redirect(url_for('auth.register'))
+            user = existing_register
+            user.name = name
+            user.email = email
+            user.phone = phone
+            user.department = department
+            user.year = year
+            user.section = section if section else None
+            user.is_active = True
+        else:
+            user = User(
+                name=name,
+                email=email,
+                phone=phone,
+                department=department,
+                role='student',
+                register_number=register_number,
+                year=year,
+                section=section if section else None,
+                is_active=True,
+            )
+            db.session.add(user)
         user.set_password(password)
-        db.session.add(user)
         db.session.commit()
 
         flash('Registration successful! Please log in.', 'success')

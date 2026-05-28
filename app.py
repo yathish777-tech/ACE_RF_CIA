@@ -1,5 +1,6 @@
 import os
 from flask import Flask
+from sqlalchemy import inspect, text
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_mail import Mail
@@ -27,7 +28,7 @@ def create_app(config_class=Config):
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
-
+                  
     # ── Blueprints ────────────────────────────────────────────────────────
     from routes.main          import main_bp
     from routes.auth          import auth_bp
@@ -55,8 +56,28 @@ def create_app(config_class=Config):
     # ── Auto-create DB tables on first run ────────────────────────────────
     with app.app_context():
         db.create_all()
+        _ensure_runtime_columns()
 
     return app
+
+
+def _ensure_runtime_columns():
+    """Keep older local databases compatible with newly added columns."""
+    inspector = inspect(db.engine)
+    column_map = {
+        table: {column['name'] for column in inspector.get_columns(table)}
+        for table in ('seating_allotment', 'exam_attendance')
+        if inspector.has_table(table)
+    }
+    alter_statements = []
+    if 'seating_allotment' in column_map and 'exam_date' not in column_map['seating_allotment']:
+        alter_statements.append('ALTER TABLE seating_allotment ADD COLUMN exam_date DATE NULL')
+    if 'exam_attendance' in column_map and 'exam_date' not in column_map['exam_attendance']:
+        alter_statements.append('ALTER TABLE exam_attendance ADD COLUMN exam_date DATE NULL')
+    for statement in alter_statements:
+        db.session.execute(text(statement))
+    if alter_statements:
+        db.session.commit()
 
 
 # ── Module-level app (used by email_utils lazy import) ────────────────────────

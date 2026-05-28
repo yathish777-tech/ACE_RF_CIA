@@ -10,13 +10,16 @@
 @keyframes btnPulse{0%,100%{box-shadow:0 4px 20px rgba(26,35,126,0.35)}50%{box-shadow:0 4px 36px rgba(26,35,126,0.65)}}
 @keyframes fieldIn{0%{opacity:0;transform:translateX(-16px)}100%{opacity:1;transform:translateX(0)}}
 @keyframes particleDrift{0%{transform:translateY(110%)rotate(0);opacity:0}10%{opacity:.7}90%{opacity:.3}100%{transform:translateY(-10px)rotate(360deg);opacity:0}}
-.auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(-45deg,#060d2e,#0d1642,#1a237e,#1565c0,#0d1642,#4a0020);
-  background-size:400% 400%;animation:bgShift 12s ease infinite;position:relative;overflow:hidden;font-family:'Nunito',sans-serif;}
+.auth-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:28px 16px 46px;
+  background:linear-gradient(90deg,rgba(6,13,46,.72),rgba(26,35,126,.45),rgba(0,0,0,.50)),url("{{ url_for('static', filename='campus_bg.jpg') }}") center/cover no-repeat,linear-gradient(-45deg,#060d2e,#0d1642,#1a237e,#1565c0,#0d1642,#4a0020);
+  background-size:auto,108% auto,400% 400%;background-position:center,50% 50%,center;animation:campusPhotoDrift 22s ease-in-out infinite;position:relative;overflow:hidden;font-family:'Nunito',sans-serif;}
+@keyframes campusPhotoDrift{0%,100%{background-size:auto,108% auto,400% 400%;background-position:center,50% 50%,center}50%{background-size:auto,114% auto,400% 400%;background-position:center,54% 48%,center}}
+.auth-page::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 0%,rgba(255,255,255,.16) 44%,transparent 70%);transform:translateX(-100%);animation:campusLightSweep 8s ease-in-out infinite;pointer-events:none;}
+@keyframes campusLightSweep{0%,28%{transform:translateX(-100%);opacity:0}42%{opacity:1}70%,100%{transform:translateX(100%);opacity:0}}
 .orb{position:absolute;border-radius:50%;pointer-events:none;}
-.orb1{width:380px;height:380px;top:-120px;right:-120px;background:radial-gradient(circle,rgba(92,107,192,.2)0%,transparent 70%);animation:floatOrb 8s ease-in-out infinite;}
-.orb2{width:280px;height:280px;bottom:-90px;left:-80px;background:radial-gradient(circle,rgba(229,57,53,.14)0%,transparent 70%);animation:floatOrb2 11s ease-in-out infinite;}
-.orb3{width:200px;height:200px;top:40%;left:-60px;background:radial-gradient(circle,rgba(66,165,245,.12)0%,transparent 70%);animation:floatOrb 14s ease-in-out infinite reverse;}
+.orb1{width:380px;height:380px;top:-120px;right:-120px;background:radial-gradient(circle,rgba(92,107,192,.10)0%,transparent 70%);animation:floatOrb 8s ease-in-out infinite;}
+.orb2{width:280px;height:280px;bottom:-90px;left:-80px;background:radial-gradient(circle,rgba(229,57,53,.08)0%,transparent 70%);animation:floatOrb2 11s ease-in-out infinite;}
+.orb3{width:200px;height:200px;top:40%;left:-60px;background:radial-gradient(circle,rgba(66,165,245,.08)0%,transparent 70%);animation:floatOrb 14s ease-in-out infinite reverse;}
 .ring1{position:absolute;width:560px;height:560px;top:50%;left:50%;margin:-280px 0 0 -280px;border:1px solid rgba(255,255,255,.04);border-radius:50%;animation:rotateSlow 40s linear infinite;}
 .ring2{position:absolute;width:400px;height:400px;top:50%;left:50%;margin:-200px 0 0 -200px;border:1px solid rgba(92,107,192,.08);border-radius:50%;animation:rotateSlow 25s linear infinite reverse;}
 .particle{position:absolute;border-radius:50%;pointer-events:none;animation:particleDrift linear infinite;}

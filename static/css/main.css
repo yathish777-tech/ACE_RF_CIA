@@ -96,6 +96,44 @@ a:hover { color: var(--primary-light); }
 }
 .auth-logo p { font-size: 13px; color: var(--text-muted); }
 
+.work-credit {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  overflow: hidden;
+  padding: 7px 0;
+  background: rgba(255,255,255,0.24);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid rgba(255,255,255,0.38);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.55);
+}
+.work-credit-track {
+  display: inline-flex;
+  gap: 64px;
+  min-width: max-content;
+  padding-left: 100%;
+  white-space: nowrap;
+  animation: creditMarquee 22s linear infinite;
+}
+.work-credit-track span {
+  display: inline-block;
+}
+@keyframes creditMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+.auth-page {
+  flex-direction: column;
+  gap: 0;
+  padding: 28px 16px 46px;
+}
+
 /* ── LAYOUT ── */
 .layout {
   display: flex;

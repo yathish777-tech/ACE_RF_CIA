@@ -2,16 +2,20 @@
 {% block title %}Absentee Records{% endblock %}
 {% block page_title %}Absentee Records{% endblock %}
 {% block sidebar_nav %}
+{% if current_user.role == 'hod' or current_user.secondary_role == 'hod' %}
+<a href="{{ url_for('hod.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> HOD Dashboard</a>
+{% else %}
 <span class="nav-section-label">Overview</span>
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
 <span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
 <a href="{{ url_for('admin.bulk_upload') }}" class="nav-item"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_students') }}" class="nav-item"><span class="nav-icon">🎓</span> Students</a>
 <a href="{{ url_for('admin.manage_staff') }}" class="nav-item"><span class="nav-icon">👥</span> Manage Staff</a>
 <a href="{{ url_for('admin.manage_subjects') }}" class="nav-item"><span class="nav-icon">📚</span> Subjects</a>
 <a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item"><span class="nav-icon">📅</span> CIA Dates</a>
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
-<a href="{{ url_for('admin.view_absentees') }}" class="nav-item active"><span class="nav-icon">🚫</span> Absentee Lists</a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -19,16 +23,26 @@
   <div><h2>🚫 Absentee Records</h2><p>Lists uploaded by subject staff. Download each CIA separately.</p></div>
 </div>
 
-{% macro cia_section(cia_num, records) %}
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-body" style="padding:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <span style="font-size:12px;font-weight:700;color:#374151;margin-right:4px;">Year:</span>
+    <a href="{{ url_for('admin.view_absentees') }}" class="btn btn-sm {% if not year_filter %}btn-primary{% else %}btn-outline{% endif %}">All</a>
+    {% for y in range(1,5) %}
+    <a href="{{ url_for('admin.view_absentees') }}?year={{ y }}" class="btn btn-sm {% if year_filter == y %}btn-primary{% else %}btn-outline{% endif %}">Year {{ y }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% macro cia_section(cia_num, records, year_filter) %}
 <div class="card mb-4" style="margin-bottom:24px;border-top:4px solid {{ '#1a237e' if cia_num==1 else ('#0277bd' if cia_num==2 else '#00695c') }};">
   <div class="card-header" style="background:{{ '#e8eaf6' if cia_num==1 else ('#e1f5fe' if cia_num==2 else '#e0f2f1') }};">
     <h3 style="color:{{ '#1a237e' if cia_num==1 else ('#01579b' if cia_num==2 else '#004d40') }};">
       📋 CIA {{ cia_num }} Absentees ({{ records|length }} uploads)
     </h3>
     <div style="display:flex;gap:8px;">
-      <a href="{{ url_for('admin.download_absentees_cia', cia_num=cia_num, fmt='excel') }}"
+      <a href="{{ url_for('admin.download_absentees_cia', cia_num=cia_num, fmt='excel') }}{% if year_filter %}?year={{ year_filter }}{% endif %}"
          class="btn btn-success btn-sm">📥 Download Excel</a>
-      <a href="{{ url_for('admin.download_absentees_cia', cia_num=cia_num, fmt='pdf') }}"
+      <a href="{{ url_for('admin.download_absentees_cia', cia_num=cia_num, fmt='pdf') }}{% if year_filter %}?year={{ year_filter }}{% endif %}"
          class="btn btn-danger btn-sm">📄 Download PDF</a>
     </div>
   </div>
@@ -82,9 +96,9 @@
 </div>
 {% endmacro %}
 
-{{ cia_section(1, records_cia1) }}
-{{ cia_section(2, records_cia2) }}
-{{ cia_section(3, records_cia3) }}
+{{ cia_section(1, records_cia1, year_filter) }}
+{{ cia_section(2, records_cia2, year_filter) }}
+{{ cia_section(3, records_cia3, year_filter) }}
 
 <!-- View Students Modal -->
 <div class="modal-overlay" id="studentsModal">
