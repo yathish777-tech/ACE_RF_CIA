@@ -42,25 +42,20 @@ a:hover { color: var(--primary-light); }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0d1642 0%, #1a237e 45%, #283593 100%);
+  background: url("campus_bg.jpg") center center / cover no-repeat fixed, #020617;
   position: relative;
   overflow: hidden;
+  font-family: 'Poppins', 'Nunito', sans-serif;
 }
 .auth-page::before {
   content: '';
-  position: absolute;
-  width: 600px; height: 600px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.04);
-  top: -200px; right: -200px;
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.66);
+  pointer-events: none;
 }
 .auth-page::after {
-  content: '';
-  position: absolute;
-  width: 400px; height: 400px;
-  border-radius: 50%;
-  background: rgba(229,57,53,0.08);
-  bottom: -150px; left: -100px;
+  content: none;
 }
 .auth-card {
   background: white;

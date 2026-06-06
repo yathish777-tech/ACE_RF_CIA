@@ -3,9 +3,6 @@
 {% block head %}{% include "auth/_anim_styles.html" %}{% endblock %}
 {% block body %}
 <div class="auth-page">
-  <div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div>
-  <div class="ring1"></div><div class="ring2"></div>
-  <div id="pts"></div>
   <div class="auth-card" style="max-width:520px;">
     <div class="card-corner cc-tl"></div><div class="card-corner cc-br"></div>
     <div class="auth-logo">
@@ -61,10 +58,8 @@
     </form>
     <p class="auth-footer-link fi6">Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a></p>
   </div>
-  {% include '_page_credit.html' %}
 </div>
 <script>
-(function(){const c=document.getElementById('pts');const cols=['rgba(255,255,255,.5)','rgba(144,164,251,.5)','rgba(229,57,53,.4)','rgba(66,165,245,.45)'];for(let i=0;i<14;i++){const p=document.createElement('div');p.className='particle';const sz=Math.random()*5+2;p.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;bottom:-10px;background:${cols[Math.floor(Math.random()*cols.length)]};animation-duration:${7+Math.random()*9}s;animation-delay:${Math.random()*8}s;`;c.appendChild(p);}})();
 function togglePw(id,btn){const f=document.getElementById(id);f.type=f.type==='password'?'text':'password';btn.textContent=f.type==='password'?'👁️':'🙈';}
 document.querySelectorAll('.f-input').forEach(el=>{el.addEventListener('focus',function(){this.style.borderColor='#1a237e';});el.addEventListener('blur',function(){this.style.borderColor=this.value?'#c5cae9':'#e0e7ff';});});
 </script>
