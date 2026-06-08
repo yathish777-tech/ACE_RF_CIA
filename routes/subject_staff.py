@@ -91,6 +91,8 @@ def action(app_id):
     application.staff_status = 'approved' if act == 'approve' else 'rejected'
     application.staff_remark = remark
     application.staff_action_time = datetime.utcnow()
+    if act == 'reject':
+        application.final_status = 'rejected'
 
     db.session.commit()
     flash('Action updated successfully', 'success')
@@ -109,10 +111,23 @@ def upload_absentees():
     subject_id = request.form.get('subject_id','')
     cia_number = request.form.get('cia_number','')
     semester   = request.form.get('semester','')
+    year       = request.form.get('year','')
+    section    = (request.form.get('section','') or '').upper()
 
     if not subject_id or not cia_number:
         flash('Subject and CIA number are required.', 'danger')
         return redirect(url_for('staff.dashboard'))
+
+    if year and not year.isdigit():
+        flash('Year must be a valid number.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+
+    if section and section not in ('A','B','C','D','E'):
+        flash('Section must be one of A, B, C, D, E.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+
+    if section and section == '':
+        section = ''
 
     # Check for existing record
     existing = AbsenceRecord.query.filter_by(
@@ -155,12 +170,18 @@ def upload_absentees():
                 for _, row in df.iterrows():
                     reg = ''
                     name = ''
+                    row_year = ''
+                    row_section = ''
                     for col_name, value in row.items():
                         normalized_col = normalize_column_name(col_name)
                         if not reg and normalized_col in reg_keys:
                             reg = normalize_value(value)
                         if not name and normalized_col in name_keys:
                             name = normalize_value(value)
+                        if not row_year and normalized_col in ('year', 'yr'):
+                            row_year = normalize_value(value)
+                        if not row_section and normalized_col in ('section', 'sec'):
+                            row_section = normalize_value(value).upper()
                     if not reg:
                         reg = normalize_value(
                             row.get('reg_no') or row.get('register_number') or
@@ -170,6 +191,10 @@ def upload_absentees():
                         name = normalize_value(
                             row.get('name') or row.get('student_name') or ''
                         )
+                    if not row_year:
+                        row_year = year
+                    if not row_section:
+                        row_section = section
                     if reg or name:
                         students.append({
                             'reg_no': reg,
@@ -177,7 +202,9 @@ def upload_absentees():
                             'register_no': reg,
                             'reg': reg,
                             'name': name,
-                            'student_name': name
+                            'student_name': name,
+                            'year': row_year,
+                            'section': row_section
                         })
             except Exception as e:
                 flash(f'Could not parse file: {e}. Students saved as file only.', 'warning')
@@ -194,7 +221,9 @@ def upload_absentees():
                 'register_no': r,
                 'reg': r,
                 'name': n,
-                'student_name': n
+                'student_name': n,
+                'year': year,
+                'section': section
             })
 
     if existing:

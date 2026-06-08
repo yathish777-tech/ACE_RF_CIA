@@ -1,0 +1,61 @@
+{% extends "dashboard_base.html" %}
+{% block title %}All Halls{% endblock %}
+{% block page_title %}All Halls{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Navigation</span>
+{% if current_user.role == 'admin' %}
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allotment</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance</a>
+{% elif current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff' %}
+<a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
+<a href="{{ url_for('admin.my_halls') }}" class="nav-item active"><span class="nav-icon">🏛</span> All Halls</a>
+{% elif current_user.role == 'tutor' or current_user.secondary_role == 'tutor' %}
+<a href="{{ url_for('tutor.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
+<a href="{{ url_for('admin.my_halls') }}" class="nav-item active"><span class="nav-icon">🏛</span> All Halls</a>
+{% else %}
+<a href="{{ url_for('admin.my_halls') }}" class="nav-item active"><span class="nav-icon">🏛</span> All Halls</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>All Halls</h2>
+    <p>Open any hall and enter student register number, year, section, and attendance manually.</p>
+  </div>
+</div>
+
+{% if hall_numbers %}
+<div class="stats-grid" style="margin-bottom:24px;">
+  {% for hn in hall_numbers | sort %}
+  {% set st = hall_status[hn] %}
+  {% set pct = ((st.marked / st.total * 100) | round(0) | int) if st.total else 0 %}
+  <div class="stat-card blue">
+    <div class="stat-info" style="width:100%;">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div>
+          <div class="stat-value" style="font-size:26px;">{{ hn }}</div>
+          <div class="stat-label">{{ st.total }} planned · {{ st.marked }} entered</div>
+        </div>
+        <span class="badge {% if pct >= 100 %}badge-success{% elif pct > 0 %}badge-warning{% else %}badge-primary{% endif %}">{{ pct }}%</span>
+      </div>
+      <div style="margin-top:14px;background:#e5e7eb;border-radius:4px;height:8px;">
+        <div style="width:{{ [pct, 100]|min }}%;background:{% if pct>=100 %}#2e7d32{% elif pct>0 %}#f57c00{% else %}#1a237e{% endif %};height:8px;border-radius:4px;"></div>
+      </div>
+      <a href="{{ url_for('admin.mark_attendance_page', hall_number=hn) }}" class="btn btn-primary btn-sm" style="margin-top:14px;width:100%;justify-content:center;">
+        Open Hall
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="padding:48px 24px;text-align:center;">
+  <div class="icon">🏛</div>
+  <h4>No Halls Created</h4>
+  <p>Ask admin to create halls from Seating Allotment.</p>
+</div>
+{% endif %}
+{% endblock %}

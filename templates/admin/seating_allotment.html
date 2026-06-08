@@ -1,0 +1,118 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Seating Allotment{% endblock %}
+{% block page_title %}Seating Allotment{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="{{ url_for('admin.bulk_upload') }}" class="nav-item"><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="{{ url_for('admin.manage_staff') }}" class="nav-item"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="{{ url_for('admin.manage_subjects') }}" class="nav-item"><span class="nav-icon">📚</span> Subjects</a>
+<a href="{{ url_for('admin.manage_cia_dates') }}" class="nav-item"><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Exam</span>
+<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item active"><span class="nav-icon">🪑</span> Seating Allotment</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item"><span class="nav-icon">🚫</span> Absentee Lists</a>
+<a href="{{ url_for('admin.view_absentees_subject') }}" class="nav-item"><span class="nav-icon">📖</span> Subject-wise Absent</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>🪑 Seating Allotment</h2>
+    <p>Create halls with only the hall number and total student count.</p>
+  </div>
+</div>
+
+<div class="card mb-4" style="margin-bottom:24px;">
+  <div class="card-header"><h3>Manual Hall Entry</h3></div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.seating_upload') }}" class="grid grid-2" style="gap:16px;align-items:end;">
+      <input type="hidden" name="record_id" id="hallRecordId" value="">
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Hall Number <span class="required">*</span></label>
+        <input type="text" name="hall_number" id="hallNumber" class="form-control" placeholder="e.g. H1" required>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">No. of Students <span class="required">*</span></label>
+        <input type="number" name="student_count" id="studentCount" class="form-control" min="1" placeholder="e.g. 40" required>
+      </div>
+      <div style="grid-column:1 / -1;display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="resetHallForm()" class="btn btn-outline">Clear</button>
+        <button type="submit" class="btn btn-primary">Save Hall</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if allotments %}
+<div class="card">
+  <div class="card-header"><h3>Entered Halls</h3></div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Hall Number</th>
+          <th>No. of Students</th>
+          <th>Attendance Entered</th>
+          <th>Created</th>
+          <th style="text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in allotments %}
+        <tr>
+          <td><div class="fw-bold">{{ row.hall_number }}</div></td>
+          <td>{{ row.total_students or row.num_students or 0 }}</td>
+          <td>{{ row.attendance_records.count() }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ row.uploaded_at.strftime('%d %b %Y') if row.uploaded_at else '-' }}</td>
+          <td style="text-align:right;">
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+              <button type="button" onclick="editHall({{ row.id }})" class="btn btn-outline btn-sm">Edit</button>
+              <a href="{{ url_for('admin.mark_attendance_page', hall_number=row.hall_number) }}" class="btn btn-primary btn-sm">Open Hall</a>
+              {% if current_user.role == 'admin' %}
+              <form method="POST" action="{{ url_for('admin.delete_seating', sa_id=row.id) }}" onsubmit="return confirm('Delete this hall?');">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state" style="padding:48px 24px;text-align:center;">
+  <div class="icon">🪑</div>
+  <h4>No Hall Entries Yet</h4>
+  <p>Enter a hall number and student count to create the first hall.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function resetHallForm() {
+  document.getElementById('hallRecordId').value = '';
+  document.getElementById('hallNumber').value = '';
+  document.getElementById('studentCount').value = '';
+  document.getElementById('hallNumber').focus();
+}
+
+function editHall(hallId) {
+  fetch(`/admin/seating/${hallId}/get`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('hallRecordId').value = data.id;
+      document.getElementById('hallNumber').value = data.hall_number || '';
+      document.getElementById('studentCount').value = data.total_students || data.num_students || '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+}
+</script>
+{% endblock %}

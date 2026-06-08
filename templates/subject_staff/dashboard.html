@@ -5,6 +5,7 @@
 
 {% block sidebar_nav %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item active"><span class="nav-icon">🏠</span> Dashboard</a>
+<a href="{{ url_for('admin.my_halls') }}" class="nav-item"><span class="nav-icon">🏛</span> All Halls</a>
 {% if current_user.secondary_role == 'tutor' or current_user.role == 'tutor' %}
 <a href="{{ url_for('tutor.dashboard') }}" class="nav-item"><span class="nav-icon">👨‍🏫</span> Tutor Dashboard</a>
 {% endif %}
@@ -39,7 +40,10 @@
       <strong style="color:#1a237e;">📋 File Format:</strong> Your Excel/CSV must have columns:
       <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">reg_no</code> and
       <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">name</code>
-      (or <code>register_number</code> / <code>student_name</code>). Or use the manual table below.
+      (or <code>register_number</code> / <code>student_name</code>). Optional columns:
+      <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">year</code>,
+      <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px;">section</code>.
+      Or use the manual table below.
     </div>
 
     {% if absence_records %}
@@ -50,6 +54,7 @@
             <th style="padding:9px 12px;color:#1a237e;">#</th>
             <th style="padding:9px 12px;color:#1a237e;">Subject</th>
             <th style="padding:9px 12px;color:#1a237e;">CIA</th>
+            <th style="padding:9px 12px;color:#1a237e;">Year / Section</th>
             <th style="padding:9px 12px;color:#1a237e;">Semester</th>
             <th style="padding:9px 12px;color:#1a237e;">Students</th>
             <th style="padding:9px 12px;color:#1a237e;">Uploaded</th>
@@ -66,6 +71,7 @@
               <div class="text-muted">{{ rec.subject.subject_code }}</div>
             </td>
             <td style="padding:9px 12px;"><span class="badge badge-primary">CIA {{ rec.cia_number }}</span></td>
+            <td style="padding:9px 12px;">{% if students and (students[0].year or students[0].section) %}{{ students[0].year or '—' }} / {{ students[0].section or '—' }}{% else %}—{% endif %}</td>
             <td style="padding:9px 12px;">{% if rec.semester %}Sem {{ rec.semester }}{% else %}—{% endif %}</td>
             <td style="padding:9px 12px;">
               <span class="badge badge-info">{{ students|length }} students</span>
@@ -145,7 +151,7 @@
   {% if reviewed %}
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Attachment</th><th>My Decision</th><th>Remark</th><th>Date</th></tr></thead>
+      <thead><tr><th>#</th><th>Student</th><th>Subject</th><th>CIA</th><th>Type</th><th>Attachment</th><th>My Decision</th><th>Action</th><th>Remark</th><th>Date</th></tr></thead>
       <tbody>
         {% for app in reviewed %}
         <tr>
@@ -156,6 +162,16 @@
           <td>{{ type_badge(app.submission_type) }}</td>
           <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎</a>{% else %}—{% endif %}</td>
           <td>{{ status_badge(app.staff_status) }}</td>
+          <td>
+            {% if app.staff_status == 'rejected' and app.final_status == 'rejected' %}
+            <form method="POST" action="{{ url_for('admin.retransmit', app_id=app.id) }}"
+                  onsubmit="return confirm('Retransmit this application from the subject staff stage?');">
+              <button type="submit" class="btn btn-warning btn-sm">Retransmit</button>
+            </form>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endif %}
+          </td>
           <td style="font-size:12px;">{{ app.staff_remark or '—' }}</td>
           <td style="font-size:12px;color:#6b7280;">{{ app.staff_action_time.strftime('%d %b %Y') if app.staff_action_time else '—' }}</td>
         </tr>
@@ -178,7 +194,7 @@
     <form method="POST" action="{{ url_for('staff.upload_absentees') }}" enctype="multipart/form-data" id="uploadForm">
       <input type="hidden" name="record_id" id="editRecordId" value="">
 
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">Subject <span class="required">*</span></label>
           <select name="subject_id" class="form-control" required id="uploadSubjectId">
@@ -193,9 +209,17 @@
           </select>
         </div>
         <div class="form-group" style="margin-bottom:0;">
-          <label class="form-label">Semester</label>
-          <select name="semester" class="form-control" id="uploadSemester">
-            {% for i in range(1,9) %}<option value="{{ i }}">Sem {{ i }}</option>{% endfor %}
+          <label class="form-label">Year</label>
+          <select name="year" class="form-control" id="uploadYear">
+            <option value="">-- Any --</option>
+            {% for i in range(1,5) %}<option value="{{ i }}">Year {{ i }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Section</label>
+          <select name="section" class="form-control" id="uploadSection">
+            <option value="">-- Any --</option>
+            {% for letter in ['A','B','C','D','E'] %}<option value="{{ letter }}">{{ letter }}</option>{% endfor %}
           </select>
         </div>
       </div>
@@ -304,18 +328,24 @@ function editRecord(recordId, subjectId, ciaNum, semester) {
   document.getElementById('uploadModalTitle').textContent = '✏️ Edit Absentee List';
   document.getElementById('uploadSubjectId').value = subjectId;
   document.getElementById('uploadCIANum').value    = ciaNum;
-  document.getElementById('uploadSemester').value  = semester;
+  document.getElementById('uploadYear').value      = '';
+  document.getElementById('uploadSection').value   = '';
   document.getElementById('studentTableBody').innerHTML = '';
   rowCount = 0;
   // Load existing students
   fetch(`/staff/absentees/${recordId}/get_students`)
     .then(r => r.json())
     .then(data => {
-      (data.students || []).forEach(s => addRow(
+      const students = data.students || [];
+      students.forEach(s => addRow(
         s.reg_no || s.register_number || s.register_no || s.reg || '',
         s.name || s.student_name || ''
       ));
-      if ((data.students || []).length === 0) addRow();
+      if (students.length) {
+        document.getElementById('uploadYear').value = students[0].year || '';
+        document.getElementById('uploadSection').value = students[0].section || '';
+      }
+      if (students.length === 0) addRow();
     });
   openModal('uploadModal');
 }
@@ -332,6 +362,8 @@ function showFileInfo(input) {
 document.querySelector('[onclick="openModal(\'uploadModal\')"]').addEventListener('click', function() {
   document.getElementById('uploadModalTitle').textContent = '📤 Upload Absentee List';
   document.getElementById('editRecordId').value = '';
+  document.getElementById('uploadYear').value = '';
+  document.getElementById('uploadSection').value = '';
   document.getElementById('studentTableBody').innerHTML = '';
   rowCount = 0;
   addRow(); addRow(); addRow();

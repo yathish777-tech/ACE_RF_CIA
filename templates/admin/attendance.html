@@ -1,0 +1,192 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Attendance Overview{% endblock %}
+{% block page_title %}Attendance Overview{% endblock %}
+
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Exam</span>
+<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allotment</a>
+<a href="{{ url_for('admin.view_attendance') }}" class="nav-item active"><span class="nav-icon">✅</span> Attendance</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
+<a href="{{ url_for('admin.view_absentees') }}" class="nav-item"><span class="nav-icon">🚫</span> Absentee Lists</a>
+<a href="{{ url_for('admin.view_absentees_subject') }}" class="nav-item"><span class="nav-icon">📖</span> Subject-wise Absent</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div><h2>✅ Attendance Overview</h2><p>Hall-wise and Year/Section-wise attendance summary.</p></div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4" style="margin-bottom:20px;">
+  <div class="card-body" style="padding:16px;">
+    <form method="GET" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Hall</label>
+        <select name="hall" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+          <option value="">All Halls</option>
+          {% for h in all_halls %}
+          <option value="{{ h }}" {% if hall_filter == h %}selected{% endif %}>{{ h }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Section</label>
+        <select name="section" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+          <option value="">All Sections</option>
+          {% for s in sections %}
+          <option value="{{ s }}" {% if section_filter == s %}selected{% endif %}>Section {{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Year</label>
+        <select name="year" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+          <option value="">All Years</option>
+          {% for y in range(1,5) %}
+          <option value="{{ y }}" {% if year_filter == y %}selected{% endif %}>{{ ['','I','II','III','IV'][y] }} Year</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">🔍 Filter</button>
+      <a href="{{ url_for('admin.view_attendance') }}" class="btn btn-outline btn-sm">✕ Clear</a>
+    </form>
+  </div>
+</div>
+
+<!-- Hall-wise Summary -->
+{% if hall_summary %}
+<div class="card mb-4" style="margin-bottom:24px;border-top:4px solid #1a237e;">
+  <div class="card-header"><h3>🏫 Hall-wise Summary</h3></div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Hall No.</th>
+          <th>Total Students</th>
+          <th>Present</th>
+          <th>Absent</th>
+          <th>Attendance %</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for hall, stats in hall_summary.items() %}
+        {% set pct = ((stats.present / stats.total * 100) | round(1)) if stats.total else 0 %}
+        <tr>
+          <td style="font-weight:700;color:#1a237e;">{{ hall }}</td>
+          <td>{{ stats.total }}</td>
+          <td><span class="badge" style="background:#d1fae5;color:#065f46;">{{ stats.present }}</span></td>
+          <td><span class="badge" style="background:#fee2e2;color:#991b1b;">{{ stats.absent }}</span></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;background:#e5e7eb;border-radius:4px;height:8px;min-width:80px;">
+                <div style="background:{% if pct >= 80 %}#10b981{% elif pct >= 60 %}#f59e0b{% else %}#ef4444{% endif %};
+                            width:{{ pct }}%;height:8px;border-radius:4px;transition:width 0.3s;"></div>
+              </div>
+              <span style="font-size:12px;font-weight:600;">{{ pct }}%</span>
+            </div>
+          </td>
+          <td>
+            <a href="{{ url_for('admin.mark_attendance_page', hall_number=hall) }}"
+               class="btn btn-outline btn-sm">✏ View / Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Year / Section Summary -->
+<div class="card mb-4" style="margin-bottom:24px;border-top:4px solid #0277bd;">
+  <div class="card-header"><h3>📊 Year / Section Summary</h3></div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Year</th>
+          {% for s in sections %}<th>Section {{ s }}</th>{% endfor %}
+          <th>Year Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for yr in range(1,5) %}
+        {% set yt = namespace(total=0, absent=0) %}
+        <tr>
+          <td style="font-weight:700;">{{ ['','I','II','III','IV'][yr] }} Year</td>
+          {% for sec in sections %}
+          {% set d = ys_summary[yr][sec] %}
+          {% set yt.total = yt.total + d.total %}
+          {% set yt.absent = yt.absent + d.absent %}
+          <td>
+            {% if d.total %}
+            <div style="font-size:12px;">
+              <span style="color:#065f46;font-weight:600;">✅ {{ d.present }}</span> /
+              <span style="color:#991b1b;font-weight:600;">❌ {{ d.absent }}</span>
+            </div>
+            <div style="font-size:11px;color:#6b7280;">of {{ d.total }}</div>
+            {% else %}
+            <span style="color:#d1d5db;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td style="font-weight:700;font-size:13px;">
+            {% if yt.total %}
+            {{ yt.total }} total · <span style="color:#991b1b;">{{ yt.absent }} absent</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Detailed Records -->
+{% if records %}
+<div class="card" style="border-top:4px solid #00695c;">
+  <div class="card-header"><h3>📋 Detailed Records ({{ records|length }})</h3></div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Hall</th><th>Register No.</th><th>Year/Section</th><th>Status</th><th>Marked By</th><th>Marked At</th></tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr style="{% if r.status == 'absent' %}background:#fff5f5;{% endif %}">
+          <td>{{ loop.index }}</td>
+          <td style="font-weight:700;color:#1a237e;">{{ r.hall_number }}</td>
+          <td style="font-family:monospace;font-weight:600;">{{ r.register_number }}</td>
+          <td>
+            {% if r.year %}{{ ['','I','II','III','IV'][r.year] }} {% endif %}
+            {% if r.section %}Sec {{ r.section }}{% endif %}
+          </td>
+          <td>
+            {% if r.status == 'present' %}
+            <span class="badge" style="background:#d1fae5;color:#065f46;">✅ Present</span>
+            {% else %}
+            <span class="badge" style="background:#fee2e2;color:#991b1b;">❌ Absent</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;">{{ r.marker.name if r.marker else '—' }}</td>
+          <td style="font-size:12px;color:#6b7280;">{{ r.marked_at.strftime('%d %b %Y %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state" style="padding:48px 24px;text-align:center;">
+  <div style="font-size:48px;margin-bottom:12px;">📋</div>
+  <h3>No Attendance Data Yet</h3>
+  <p style="color:#6b7280;">Attendance will appear here once invigilators mark it for their halls.</p>
+  <a href="{{ url_for('admin.seating_allotment') }}" class="btn btn-primary" style="margin-top:12px;">Go to Seating Allotment →</a>
+</div>
+{% endif %}
+{% endblock %}
