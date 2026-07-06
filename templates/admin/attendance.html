@@ -5,7 +5,7 @@
 {% block sidebar_nav %}
 {% if current_user.role == 'hod' or current_user.secondary_role == 'hod' %}
 <a href="{{ url_for('hod.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
-<a href="{{ url_for('admin.view_attendance') }}" class="nav-item active"><span class="nav-icon">✅</span> Attendance Overview</a>
+<a href="{{ url_for('admin.attendance_summary') }}" class="nav-item active"><span class="nav-icon">✅</span> Attendance Overview</a>
 {% if current_user.secondary_role == 'subject_staff' or current_user.role == 'subject_staff' %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">📚</span> Staff Dashboard</a>
 {% endif %}
@@ -15,8 +15,8 @@
 <span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
 <a href="{{ url_for('admin.manage_students') }}" class="nav-item"><span class="nav-icon">🎓</span> Students</a>
 <span class="nav-section-label" style="margin-top:10px;">Exam</span>
-<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allotment</a>
-<a href="{{ url_for('admin.view_attendance') }}" class="nav-item active"><span class="nav-icon">✅</span> Attendance</a>
+<a href="{{ url_for('admin.seating_allocation') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allocation</a>
+<a href="{{ url_for('admin.attendance_summary') }}" class="nav-item active"><span class="nav-icon">✅</span> Attendance Summary</a>
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item"><span class="nav-icon">📋</span> Applications</a>
 {% endif %}
@@ -63,7 +63,7 @@
         </select>
       </div>
       <button type="submit" class="btn btn-primary btn-sm">🔍 Filter</button>
-      <a href="{{ url_for('admin.view_attendance') }}" class="btn btn-outline btn-sm">✕ Clear</a>
+      <a href="{{ url_for('admin.attendance_summary') }}" class="btn btn-outline btn-sm">✕ Clear</a>
     </form>
   </div>
 </div>
@@ -198,7 +198,7 @@
   <div style="font-size:48px;margin-bottom:12px;">📋</div>
   <h3>No Attendance Data Yet</h3>
   <p style="color:#6b7280;">Attendance will appear here once invigilators mark it for their halls.</p>
-  <a href="{{ url_for('admin.seating_allotment') }}" class="btn btn-primary" style="margin-top:12px;">Go to Seating Allotment →</a>
+  <a href="{{ url_for('admin.seating_allocation') }}" class="btn btn-primary" style="margin-top:12px;">Go to Seating Allocation →</a>
 </div>
 {% endif %}
 {% endblock %}

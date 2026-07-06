@@ -1,0 +1,41 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Attendance Summary{% endblock %}
+{% block page_title %}Attendance Summary{% endblock %}
+{% block sidebar_nav %}
+<span class="nav-section-label">Overview</span>
+<a href="{{ url_for('admin.dashboard') }}" class="nav-item">Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Seating</span>
+<a href="{{ url_for('admin.manage_halls') }}" class="nav-item">Manage Halls</a>
+<a href="{{ url_for('admin.seating_allocation') }}" class="nav-item">Seating Allocation</a>
+<a href="{{ url_for('admin.attendance_summary') }}" class="nav-item active">Attendance Summary</a>
+{% endblock %}
+{% block content %}
+<div class="page-header"><div><h2>Attendance Summary</h2><p>Hall-wise and student-level attendance from generated seating.</p></div><a class="btn btn-primary" href="{{ url_for('admin.download_generated_attendance_summary', cia_id=cia_id, exam_date=exam_date, year=year_filter, department=dept_filter) }}">Excel Export</a></div>
+<form method="GET" class="card" style="padding:16px;margin-bottom:18px;display:grid;grid-template-columns:repeat(5,1fr);gap:12px;align-items:end;">
+  <div><label class="form-label">CIA Number</label><select name="cia_id" class="form-control">{% for n in [1,2,3] %}<option value="{{ n }}" {% if cia_id==n %}selected{% endif %}>CIA {{ n }}</option>{% endfor %}</select></div>
+  <div><label class="form-label">Exam Date</label><input type="date" name="exam_date" class="form-control" value="{{ exam_date.isoformat() }}"></div>
+  <div><label class="form-label">Year</label><select name="year" class="form-control"><option value="">All</option>{% for y in ['II Year','III Year','IV Year'] %}<option value="{{ y }}" {% if year_filter==y %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div>
+  <div><label class="form-label">Department</label><select name="department" class="form-control"><option value="">All</option>{% for d in departments %}<option value="{{ d }}" {% if dept_filter==d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
+  <button class="btn btn-primary">Apply Filters</button>
+</form>
+{% set pending = groups|selectattr('status','equalto','Pending')|list %}
+{% if pending %}
+<div class="alert alert-danger" style="margin-bottom:18px;">{{ pending|length }} hall(s) have not submitted attendance: {{ pending|map(attribute='hall.hall_name')|join(', ') }}</div>
+{% endif %}
+<div class="card"><div class="table-wrapper"><table>
+  <thead><tr><th>Hall Name</th><th>Hall No</th><th>Block</th><th>Total Students</th><th>Present</th><th>Absent</th><th>Attendance %</th><th>Invigilator</th><th>Status</th></tr></thead>
+  <tbody>
+  {% set ns = namespace(total=0,present=0,absent=0) %}
+  {% for g in groups %}
+    {% set ns.total = ns.total + g.total %}{% set ns.present = ns.present + g.present %}{% set ns.absent = ns.absent + g.absent %}
+    <tr onclick="document.getElementById('detail-{{ loop.index }}').classList.toggle('d-none')" style="cursor:pointer;">
+      <td>{{ g.hall.hall_name }}</td><td>{{ g.hall.hall_number }}</td><td>{{ g.hall.block or '-' }}</td><td>{{ g.total }}</td><td>{{ g.present }}</td><td>{{ g.absent }}</td>
+      <td><div style="background:#e5e7eb;border-radius:6px;overflow:hidden;"><div style="width:{{ g.pct }}%;background:#2e7d32;color:white;padding:2px 6px;font-size:11px;">{{ g.pct }}%</div></div></td>
+      <td>{{ g.invigilator or '-' }}</td><td><span class="badge {% if g.status=='Marked' %}badge-success{% else %}badge-danger{% endif %}">{{ g.status }}</span></td>
+    </tr>
+    <tr id="detail-{{ loop.index }}" class="d-none"><td colspan="9"><table><thead><tr><th>Bench Pos</th><th>Seat Label</th><th>Reg No</th><th>Name</th><th>Year</th><th>Dept</th><th>Status</th></tr></thead><tbody>{% for d in g.detail %}<tr><td>{{ d.seat.bench_position }}</td><td>{{ d.seat.seat_label }}</td><td>{{ d.seat.student_reg_no }}</td><td>{{ d.seat.student_name }}</td><td>{{ d.seat.year }}</td><td>{{ d.seat.department }}</td><td>{{ d.status }}</td></tr>{% endfor %}</tbody></table></td></tr>
+  {% endfor %}
+  <tr style="font-weight:700;"><td>All Halls Total</td><td>-</td><td>-</td><td>{{ ns.total }}</td><td>{{ ns.present }}</td><td>{{ ns.absent }}</td><td>{{ ((ns.present / ns.total * 100) if ns.total else 0)|round(1) }}%</td><td>-</td><td>-</td></tr>
+  </tbody>
+</table></div></div>
+{% endblock %}

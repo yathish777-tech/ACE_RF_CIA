@@ -1,0 +1,33 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Hall Attendance{% endblock %}
+{% block page_title %}Hall Attendance{% endblock %}
+{% block sidebar_nav %}
+<a href="{{ url_for('staff.dashboard') }}" class="nav-item">Dashboard</a>
+<a href="{{ url_for('staff.hall_attendance') }}" class="nav-item active">Hall Attendance</a>
+{% endblock %}
+{% block content %}
+<div class="page-header"><div><h2>Hall Attendance</h2><p>Load a CIA/date, select a hall, and mark attendance.</p></div></div>
+<div class="card" style="margin-bottom:20px;"><div class="card-body" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:12px;align-items:end;">
+  <div><label class="form-label">Select Your Name</label><select id="staffId" class="form-control">{% for s in staff_list %}<option value="{{ s.id }}" {% if s.id==current_user.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></div>
+  <div><label class="form-label">CIA Number</label><select id="ciaId" class="form-control"><option value="1">CIA 1</option><option value="2">CIA 2</option><option value="3">CIA 3</option></select></div>
+  <div><label class="form-label">Exam Date</label><input type="date" id="examDate" class="form-control"></div>
+  <button class="btn btn-primary" onclick="loadHalls()">Load Halls</button>
+</div></div>
+<div id="hallCards" class="grid grid-3" style="gap:16px;margin-bottom:22px;"></div>
+<div id="attendancePanel" class="card" style="display:none;">
+  <div class="card-header"><h3 id="hallTitle">Students</h3><div style="display:flex;gap:8px;"><button class="btn btn-outline btn-sm" onclick="setAll('Present')">Mark All Present</button><button class="btn btn-outline btn-sm" onclick="setAll('Absent')">Mark All Absent</button><button id="editBtn" class="btn btn-warning btn-sm" style="display:none;" onclick="enableEdit()">Edit Attendance</button></div></div>
+  <div class="card-body"><div id="lastInfo" class="text-muted" style="font-size:12px;margin-bottom:10px;"></div><div class="table-wrapper"><table><thead><tr><th>Bench Pos</th><th>Seat Label</th><th>Reg No</th><th>Student Name</th><th>Year</th><th>Dept</th><th>Status</th></tr></thead><tbody id="studentRows"></tbody></table></div><button class="btn btn-primary" style="margin-top:14px;" onclick="saveAttendance()">Save Attendance</button></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let currentHall=null, submitted=false;
+async function loadHalls(){const q=new URLSearchParams({cia_id:ciaId.value,exam_date:examDate.value});const data=await fetch(`{{ url_for('staff.hall_attendance_halls') }}?${q}`).then(r=>r.json());hallCards.innerHTML='';data.halls.forEach(h=>{const color=h.status==='Marked'?'badge-success':'badge-danger';hallCards.innerHTML+=`<button class="card" style="text-align:left;" onclick="loadStudents(${h.id}, '${h.hall_name||''}')"><div class="card-body"><h3>${h.hall_name||h.id}</h3><p>Block ${h.block||'-'} | Floor ${h.floor||'-'}</p><span class="badge badge-primary">${h.total} students</span> <span class="badge ${color}">${h.status}</span></div></button>`;});}
+async function loadStudents(hallId,name){currentHall=hallId;const q=new URLSearchParams({cia_id:ciaId.value,exam_date:examDate.value,hall_id:hallId});const data=await fetch(`{{ url_for('staff.hall_attendance_students') }}?${q}`).then(r=>r.json());submitted=data.submitted;hallTitle.textContent=name;lastInfo.textContent=data.submitted?`Last submitted by: ${data.last_by} at ${data.last_at}`:'';editBtn.style.display=data.submitted?'inline-flex':'none';studentRows.innerHTML='';data.students.forEach(s=>{const vacant=!s.student_reg_no;studentRows.innerHTML+=`<tr data-reg="${s.student_reg_no||''}"><td>${s.bench_position}</td><td>${s.seat_label}</td><td>${s.student_reg_no||'<span style="color:#777;">VACANT</span>'}</td><td>${s.student_name||'VACANT'}</td><td>${s.year||'-'}</td><td>${s.department||'-'}</td><td>${vacant?'<span class="badge badge-secondary">VACANT</span>':toggleHtml(s.status,data.submitted)}</td></tr>`;});attendancePanel.style.display='block';}
+function toggleHtml(status,disabled){return `<button class="btn btn-sm ${status==='Present'?'btn-success':'btn-danger'} status-toggle" ${disabled?'disabled':''} onclick="toggleStatus(this)">${status}</button>`}
+function toggleStatus(btn){const next=btn.textContent.trim()==='Present'?'Absent':'Present';btn.outerHTML=toggleHtml(next,false);}
+function setAll(status){document.querySelectorAll('.status-toggle:not(:disabled)').forEach(btn=>btn.outerHTML=toggleHtml(status,false));}
+function enableEdit(){document.querySelectorAll('.status-toggle').forEach(btn=>btn.disabled=false);}
+async function saveAttendance(){const attendance=[...document.querySelectorAll('#studentRows tr')].map(tr=>({student_reg_no:tr.dataset.reg,status:tr.querySelector('.status-toggle')?.textContent.trim()})).filter(x=>x.student_reg_no);const res=await fetch(`{{ url_for('staff.save_hall_attendance') }}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cia_id:ciaId.value,hall_id:currentHall,exam_date:examDate.value,staff_id:staffId.value,attendance})});const data=await res.json();alert(data.message||'Saved');loadStudents(currentHall,hallTitle.textContent);}
+</script>
+{% endblock %}

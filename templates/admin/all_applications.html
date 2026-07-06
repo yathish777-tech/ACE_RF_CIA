@@ -14,8 +14,9 @@
 <span class="nav-section-label" style="margin-top:10px;">Records</span>
 <a href="{{ url_for('admin.all_applications') }}" class="nav-item active"><span class="nav-icon">📋</span> Applications</a>
 <span class="nav-section-label" style="margin-top:10px;">Exam</span>
-<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item {% if request.endpoint=='admin.seating_allotment' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allotment</a>
-<a href="{{ url_for('admin.view_attendance') }}" class="nav-item {% if request.endpoint=='admin.view_attendance' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance</a>
+<a href="{{ url_for('admin.manage_halls') }}" class="nav-item {% if request.endpoint=='admin.manage_halls' %}active{% endif %}"><span class="nav-icon">H</span> Manage Halls</a>
+<a href="{{ url_for('admin.seating_allocation') }}" class="nav-item {% if request.endpoint=='admin.seating_allocation' %}active{% endif %}"><span class="nav-icon">🪑</span> Seating Allocation</a>
+<a href="{{ url_for('admin.attendance_summary') }}" class="nav-item {% if request.endpoint=='admin.attendance_summary' %}active{% endif %}"><span class="nav-icon">✅</span> Attendance Summary</a>
 {% endblock %}
 
 {% block content %}

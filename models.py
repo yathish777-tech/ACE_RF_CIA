@@ -406,3 +406,67 @@ class ExamAttendance(db.Model):
 
     def __repr__(self):
         return f'<ExamAttendance hall={self.hall_number} reg={self.register_number} {self.status}>'
+
+
+class Hall(db.Model):
+    __tablename__ = 'halls'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    hall_name   = db.Column(db.String(100), nullable=True)
+    hall_number = db.Column(db.String(20), nullable=False, unique=True)
+    block       = db.Column(db.String(50), nullable=True)
+    floor       = db.Column(db.String(20), nullable=True)
+    capacity    = db.Column(db.Integer, default=40)
+    is_special  = db.Column(db.Boolean, default=False, nullable=False)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Hall {self.hall_number}>'
+
+
+class SeatingAllocation(db.Model):
+    __tablename__ = 'seating_allocation'
+
+    id             = db.Column(db.Integer, primary_key=True)
+    cia_id         = db.Column(db.Integer, nullable=False)
+    hall_id        = db.Column(db.Integer, db.ForeignKey('halls.id', ondelete='CASCADE'), nullable=False)
+    bench_position = db.Column(db.Integer, nullable=False)
+    seat_side      = db.Column(db.String(10), nullable=False)
+    seat_label     = db.Column(db.String(40), nullable=True)
+    row_group      = db.Column(db.Integer, nullable=False)
+    col_number     = db.Column(db.Integer, nullable=False)
+    student_reg_no = db.Column(db.String(30), nullable=True)
+    student_name   = db.Column(db.String(100), nullable=True)
+    year           = db.Column(db.String(20), nullable=True)
+    department     = db.Column(db.String(100), nullable=True)
+    exam_date      = db.Column(db.Date, nullable=False)
+    generated_by   = db.Column(db.String(100), nullable=True)
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+
+    hall = db.relationship('Hall', backref=db.backref('allocations', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('cia_id', 'hall_id', 'student_reg_no', 'exam_date',
+                            name='uq_alloc_hall_student_exam'),
+    )
+
+
+class HallAttendance(db.Model):
+    __tablename__ = 'hall_attendance'
+
+    id                    = db.Column(db.Integer, primary_key=True)
+    cia_id                = db.Column(db.Integer, nullable=False)
+    hall_id               = db.Column(db.Integer, db.ForeignKey('halls.id', ondelete='CASCADE'), nullable=False)
+    student_reg_no        = db.Column(db.String(30), nullable=False)
+    invigilator_staff_id  = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    status                = db.Column(db.String(10), nullable=False, default='Present')
+    exam_date             = db.Column(db.Date, nullable=False)
+    marked_at             = db.Column(db.DateTime, default=datetime.utcnow)
+
+    hall = db.relationship('Hall', backref=db.backref('attendance_rows', lazy='dynamic'))
+    invigilator = db.relationship('User', foreign_keys=[invigilator_staff_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('cia_id', 'hall_id', 'student_reg_no', 'exam_date',
+                            name='unique_attendance'),
+    )

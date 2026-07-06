@@ -7,8 +7,8 @@
 {% if current_user.role == 'admin' or current_user.secondary_role == 'admin' %}
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Admin Dashboard</a>
 <a href="{{ url_for('admin.manage_students') }}" class="nav-item"><span class="nav-icon">🎓</span> Students</a>
-<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allotment</a>
-<a href="{{ url_for('admin.view_attendance') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Overview</a>
+<a href="{{ url_for('admin.seating_allocation') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allocation</a>
+<a href="{{ url_for('admin.attendance_summary') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Overview</a>
 {% elif current_user.role == 'tutor' or current_user.secondary_role == 'tutor' %}
 <a href="{{ url_for('tutor.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
 <a href="{{ url_for('admin.my_halls') }}" class="nav-item"><span class="nav-icon">🏛</span> All Halls</a>
@@ -109,8 +109,8 @@
 <div class="empty-state" style="padding:48px 24px;text-align:center;">
   <div class="icon">🪑</div>
   <h4>No Students Allotted</h4>
-  <p>This hall does not have registered students attached yet. Add register numbers from Seating Allotment.</p>
-  <a href="{{ url_for('admin.seating_allotment') }}" class="btn btn-primary" style="margin-top:12px;">Go to Seating Allotment</a>
+  <p>This hall does not have registered students attached yet. Add register numbers from Seating Allocation.</p>
+  <a href="{{ url_for('admin.seating_allocation') }}" class="btn btn-primary" style="margin-top:12px;">Go to Seating Allocation</a>
 </div>
 {% endif %}
 {% endblock %}

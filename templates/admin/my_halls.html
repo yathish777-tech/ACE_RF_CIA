@@ -7,8 +7,9 @@
 {% if current_user.role == 'admin' %}
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
 <a href="{{ url_for('admin.manage_students') }}" class="nav-item"><span class="nav-icon">🎓</span> Students</a>
-<a href="{{ url_for('admin.seating_allotment') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allotment</a>
-<a href="{{ url_for('admin.view_attendance') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance</a>
+<a href="{{ url_for('admin.manage_halls') }}" class="nav-item {% if request.endpoint=='admin.manage_halls' %}active{% endif %}"><span class="nav-icon">H</span> Manage Halls</a>
+<a href="{{ url_for('admin.seating_allocation') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allocation</a>
+<a href="{{ url_for('admin.attendance_summary') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Summary</a>
 {% elif current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff' %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
 <a href="{{ url_for('admin.my_halls') }}" class="nav-item active"><span class="nav-icon">🏛</span> All Halls</a>
@@ -56,7 +57,7 @@
 <div class="empty-state" style="padding:48px 24px;text-align:center;">
   <div class="icon">🏛</div>
   <h4>No Halls Created</h4>
-  <p>Ask admin to create halls from Seating Allotment.</p>
+  <p>Ask admin to create halls from Seating Allocation.</p>
 </div>
 {% endif %}
 {% endblock %}

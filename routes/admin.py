@@ -2,7 +2,7 @@ import os, io, uuid, re
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
-from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, SeatingAllotment, ExamAttendance
+from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -1393,6 +1393,313 @@ def _hall_student_rows(hall_number, allotments):
 
 
 # ─── SEATING ALLOTMENT ────────────────────────────────────────────────────────
+# --- HALLS AND GENERATED SEATING ------------------------------------------------
+YEAR_TEXT = {2: 'II Year', 3: 'III Year', 4: 'IV Year'}
+SEAT_POSITIONS = [1,2,3,4,5, 10,9,8,7,6, 11,12,13,14,15, 20,19,18,17,16]
+ROW_MAP = {1:1,2:1,3:1,4:1,5:1,6:2,7:2,8:2,9:2,10:2,11:3,12:3,13:3,14:3,15:3,16:4,17:4,18:4,19:4,20:4}
+COL_MAP = {1:1,2:2,3:3,4:4,5:5,10:1,9:2,8:3,7:4,6:5,11:1,12:2,13:3,14:4,15:5,20:1,19:2,18:3,17:4,16:5}
+
+
+def _cia_int(value):
+    text = str(value or '').replace('CIA', '').strip()
+    return int(text) if text in ('1', '2', '3') else None
+
+
+def _student_dicts(year):
+    return [{'register_number': u.register_number, 'name': u.name, 'department': u.department or ''}
+            for u in User.query.filter_by(role='student', year=year, is_active=True)
+            .order_by(User.register_number.asc()).all()]
+
+
+def generate_seating(iv_students, iii_students, hall_id, cia_id, exam_date, generated_by):
+    records = []
+    for i, pos in enumerate(SEAT_POSITIONS):
+        for side, students, label_year, year_name in (
+            ('LEFT', iv_students, 'IV YEAR', 'IV Year'),
+            ('RIGHT', iii_students, 'III YEAR', 'III Year'),
+        ):
+            s = students[i] if i < len(students) else None
+            records.append({
+                'hall_id': hall_id, 'cia_id': cia_id, 'bench_position': pos,
+                'seat_side': side, 'seat_label': f'{label_year}-{pos}' if s else f'{label_year}-{pos} (VACANT)',
+                'student_reg_no': s['register_number'] if s else None,
+                'student_name': s['name'] if s else None,
+                'year': year_name, 'department': s['department'] if s else None,
+                'row_group': ROW_MAP[pos], 'col_number': COL_MAP[pos],
+                'exam_date': exam_date, 'generated_by': generated_by
+            })
+    return records
+
+
+def _allocation_groups(cia_id=None, exam_date=None):
+    query = SeatingAllocation.query.join(Hall)
+    if cia_id:
+        query = query.filter(SeatingAllocation.cia_id == cia_id)
+    if exam_date:
+        query = query.filter(SeatingAllocation.exam_date == exam_date)
+    rows = query.order_by(Hall.id, SeatingAllocation.bench_position, SeatingAllocation.seat_side).all()
+    groups = {}
+    for row in rows:
+        groups.setdefault(row.hall_id, {'hall': row.hall, 'rows': []})['rows'].append(row)
+    return list(groups.values())
+
+
+@admin_bp.route('/manage-halls', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def manage_halls():
+    if request.method == 'POST':
+        action = request.form.get('action', 'add')
+        try:
+            if action == 'upload':
+                f = request.files.get('hall_file')
+                if not f or not f.filename.lower().endswith('.xlsx'):
+                    flash('Please upload a .xlsx hall file.', 'danger')
+                    return redirect(url_for('admin.manage_halls'))
+                import pandas as pd
+                df = pd.read_excel(f, dtype=str)
+                df.columns = [_normalize_column_name(c) for c in df.columns]
+                added = updated = duplicates = 0
+                for _, row in df.iterrows():
+                    hall_number = _row_value(row, 'hall_number')
+                    if not hall_number:
+                        continue
+                    data = {
+                        'hall_name': _row_value(row, 'hall_name'),
+                        'hall_number': hall_number,
+                        'block': _row_value(row, 'block'),
+                        'floor': _row_value(row, 'floor'),
+                        'capacity': int(float(_row_value(row, 'capacity') or 40)),
+                        'is_special': hall_number == '340'
+                    }
+                    hall = Hall.query.filter_by(hall_number=hall_number).first()
+                    if hall:
+                        duplicates += 1; updated += 1
+                        for key, value in data.items():
+                            setattr(hall, key, value)
+                    else:
+                        db.session.add(Hall(**data)); added += 1
+                db.session.commit()
+                flash(f'Hall upload complete: {added} added, {updated} updated.', 'success')
+                if duplicates:
+                    flash(f'{duplicates} duplicate hall number(s) were updated.', 'warning')
+            else:
+                hall_id = request.form.get('hall_id', type=int)
+                hall_number = _clean_cell(request.form.get('hall_number'))
+                data = {
+                    'hall_name': _clean_cell(request.form.get('hall_name')),
+                    'hall_number': hall_number,
+                    'block': _clean_cell(request.form.get('block')),
+                    'floor': _clean_cell(request.form.get('floor')),
+                    'capacity': max(request.form.get('capacity', type=int) or 40, 1),
+                    'is_special': bool(request.form.get('is_special')) or hall_number == '340'
+                }
+                hall = Hall.query.get(hall_id) if hall_id else None
+                duplicate = Hall.query.filter(Hall.hall_number == hall_number, Hall.id != (hall.id if hall else 0)).first()
+                if duplicate:
+                    flash('Duplicate hall number warning: hall already exists.', 'danger')
+                elif hall:
+                    for key, value in data.items():
+                        setattr(hall, key, value)
+                    db.session.commit(); flash('Hall updated.', 'success')
+                else:
+                    db.session.add(Hall(**data)); db.session.commit(); flash('Hall added.', 'success')
+        except Exception as e:
+            db.session.rollback(); flash(f'Hall save failed: {e}', 'danger')
+        return redirect(url_for('admin.manage_halls'))
+    return render_template('admin/manage_halls.html', halls=Hall.query.order_by(Hall.id).all())
+
+
+@admin_bp.route('/manage-halls/<int:hall_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_hall(hall_id):
+    db.session.delete(Hall.query.get_or_404(hall_id))
+    db.session.commit()
+    flash('Hall deleted.', 'success')
+    return redirect(url_for('admin.manage_halls'))
+
+
+@admin_bp.route('/seating-allocation', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def seating_allocation():
+    selected_cia = _cia_int(request.values.get('cia_id'))
+    selected_date = _parse_date(request.values.get('exam_date', ''))
+    if request.method == 'POST':
+        cia_id = _cia_int(request.form.get('cia_id'))
+        exam_date = _parse_date(request.form.get('exam_date', ''))
+        hall_count = request.form.get('hall_count', type=int) or 0
+        selected_years = request.form.getlist('years')
+        if not cia_id or not exam_date or hall_count < 1:
+            flash('CIA number, exam date, and number of halls are required.', 'danger')
+            return redirect(url_for('admin.seating_allocation'))
+        halls = Hall.query.order_by(Hall.id).limit(hall_count).all()
+        auto_halls = [h for h in halls if not h.is_special]
+        skipped = [h for h in halls if h.is_special]
+        if skipped:
+            flash(', '.join([f'Room {h.hall_number} skipped - requires manual seating' for h in skipped]), 'warning')
+        if not auto_halls:
+            flash('No auto-allocation halls available.', 'danger')
+            return redirect(url_for('admin.seating_allocation'))
+        if '2' in selected_years:
+            flash('II Year selected, but this ACE pattern only seats IV Year left and III Year right.', 'warning')
+        iii_students = _student_dicts(3) if '3' in selected_years else []
+        iv_students = _student_dicts(4) if '4' in selected_years else []
+        SeatingAllocation.query.filter_by(cia_id=cia_id, exam_date=exam_date).delete()
+        for idx, hall in enumerate(auto_halls):
+            records = generate_seating(iv_students[idx*20:(idx+1)*20], iii_students[idx*20:(idx+1)*20],
+                                       hall.id, cia_id, exam_date, current_user.name)
+            db.session.add_all([SeatingAllocation(**r) for r in records])
+        db.session.commit()
+        flash('Seating allocation generated.', 'success')
+        return redirect(url_for('admin.seating_allocation', cia_id=cia_id, exam_date=exam_date))
+    groups = _allocation_groups(selected_cia, selected_date) if selected_cia and selected_date else []
+    return render_template('admin/seating_allocation.html', halls=Hall.query.order_by(Hall.id).all(),
+                           groups=groups, selected_cia=selected_cia, selected_date=selected_date)
+
+
+def _next_vacant(hall_id, cia_id, exam_date, preferred_year):
+    side = 'LEFT' if preferred_year == 'IV Year' else 'RIGHT'
+    return SeatingAllocation.query.filter_by(hall_id=hall_id, cia_id=cia_id, exam_date=exam_date,
+                                             seat_side=side, student_reg_no=None).order_by(SeatingAllocation.bench_position).first()
+
+
+@admin_bp.route('/update-seat', methods=['POST'])
+@login_required
+@admin_required
+def update_seat():
+    row = SeatingAllocation.query.get_or_404(request.form.get('allocation_id', type=int))
+    reg_no = _normalize_register_number(request.form.get('student_reg_no', ''))
+    hall_id = request.form.get('hall_id', type=int) or row.hall_id
+    duplicate = SeatingAllocation.query.filter(SeatingAllocation.id != row.id, SeatingAllocation.hall_id == hall_id,
+        SeatingAllocation.cia_id == row.cia_id, SeatingAllocation.exam_date == row.exam_date,
+        SeatingAllocation.student_reg_no == reg_no).first() if reg_no else None
+    if duplicate:
+        return jsonify({'ok': False, 'message': 'Duplicate register number in same hall/CIA/date.'}), 400
+    target = _next_vacant(hall_id, row.cia_id, row.exam_date, row.year) if hall_id != row.hall_id else row
+    if not target:
+        return jsonify({'ok': False, 'message': 'No vacant matching seat in target hall.'}), 400
+    if target.id != row.id:
+        row.student_reg_no = row.student_name = row.department = None
+        row.seat_label = f"{'IV YEAR' if row.year == 'IV Year' else 'III YEAR'}-{row.bench_position} (VACANT)"
+    student = User.query.filter_by(role='student', register_number=reg_no).first() if reg_no else None
+    target.student_reg_no = reg_no or None
+    target.student_name = student.name if student else (_clean_cell(request.form.get('student_name')) or None)
+    target.department = student.department if student else target.department
+    db.session.commit()
+    return jsonify({'ok': True, 'message': 'Seat updated.'})
+
+
+@admin_bp.route('/swap-hall-seat', methods=['POST'])
+@login_required
+@admin_required
+def swap_hall_seat():
+    row = SeatingAllocation.query.get_or_404(request.form.get('allocation_id', type=int))
+    target = _next_vacant(request.form.get('hall_id', type=int), row.cia_id, row.exam_date, row.year)
+    if not target:
+        return jsonify({'ok': False, 'message': 'No vacant matching seat in target hall.'}), 400
+    target.student_reg_no, target.student_name, target.department = row.student_reg_no, row.student_name, row.department
+    target.seat_label = f"{'IV YEAR' if row.year == 'IV Year' else 'III YEAR'}-{target.bench_position}"
+    row.student_reg_no = row.student_name = row.department = None
+    row.seat_label = f"{'IV YEAR' if row.year == 'IV Year' else 'III YEAR'}-{row.bench_position} (VACANT)"
+    db.session.commit()
+    return jsonify({'ok': True, 'message': 'Student moved.'})
+
+
+@admin_bp.route('/update-exam-date', methods=['POST'])
+@login_required
+@admin_required
+def update_exam_date():
+    cia_id = _cia_int(request.form.get('cia_id'))
+    old_date = _parse_date(request.form.get('old_date', ''))
+    new_date = _parse_date(request.form.get('new_date', ''))
+    if not cia_id or not old_date or not new_date:
+        return jsonify({'ok': False, 'message': 'CIA, old date, and new date are required.'}), 400
+    SeatingAllocation.query.filter_by(cia_id=cia_id, exam_date=old_date).update({'exam_date': new_date})
+    db.session.commit()
+    return jsonify({'ok': True, 'redirect': url_for('admin.seating_allocation', cia_id=cia_id, exam_date=new_date)})
+
+
+@admin_bp.route('/regenerate-seating', methods=['POST'])
+@login_required
+@admin_required
+def regenerate_seating():
+    cia_id = _cia_int(request.form.get('cia_id'))
+    exam_date = _parse_date(request.form.get('exam_date', ''))
+    SeatingAllocation.query.filter_by(cia_id=cia_id, exam_date=exam_date).delete()
+    db.session.commit()
+    flash('Existing allocation cleared. Generate again with the same inputs.', 'success')
+    return redirect(url_for('admin.seating_allocation', cia_id=cia_id, exam_date=exam_date))
+
+
+@admin_bp.route('/regenerate-hall/<int:hall_id>', methods=['POST'])
+@login_required
+@admin_required
+def regenerate_single_hall(hall_id):
+    cia_id = _cia_int(request.form.get('cia_id')); exam_date = _parse_date(request.form.get('exam_date', ''))
+    hall_ids = [h.id for h in Hall.query.filter_by(is_special=False).order_by(Hall.id).all()]
+    offset = hall_ids.index(hall_id) if hall_id in hall_ids else 0
+    SeatingAllocation.query.filter_by(hall_id=hall_id, cia_id=cia_id, exam_date=exam_date).delete()
+    records = generate_seating(_student_dicts(4)[offset*20:(offset+1)*20], _student_dicts(3)[offset*20:(offset+1)*20],
+                               hall_id, cia_id, exam_date, current_user.name)
+    db.session.add_all([SeatingAllocation(**r) for r in records]); db.session.commit()
+    flash('Single hall regenerated.', 'success')
+    return redirect(url_for('admin.seating_allocation', cia_id=cia_id, exam_date=exam_date))
+
+
+@admin_bp.route('/seating-allocation/download/<fmt>')
+@login_required
+@admin_required
+def download_seating_allocation(fmt):
+    cia_id = _cia_int(request.args.get('cia_id')); exam_date = _parse_date(request.args.get('exam_date', ''))
+    groups = _allocation_groups(cia_id, exam_date)
+    if fmt == 'excel':
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        wb = openpyxl.Workbook(); wb.remove(wb.active)
+        if not groups:
+            ws = wb.create_sheet('No Data')
+            ws.append(['No seating allocation found for the selected CIA/date.'])
+        for group in groups:
+            ws = wb.create_sheet((group['hall'].hall_name or group['hall'].hall_number)[:31])
+            ws.merge_cells('A1:F1'); ws['A1'] = 'Adhiyamaan College of Engineering'; ws['A1'].font = Font(bold=True, size=14)
+            ws.merge_cells('A2:F2'); ws['A2'] = f'CIA {cia_id} Seating Allocation - {exam_date.strftime("%d-%m-%Y")}'; ws['A2'].alignment = Alignment(horizontal='center')
+            ws.merge_cells('A3:F3'); ws['A3'] = f"{group['hall'].hall_name} | Block {group['hall'].block or '-'} | Floor {group['hall'].floor or '-'}"
+            ws.append([]); ws.append(['Bench Pos', 'Seat Label', 'Reg No', 'Name', 'Year', 'Department'])
+            for c in ws[5]: c.font = Font(bold=True, color='FFFFFF'); c.fill = PatternFill('solid', fgColor='1A237E')
+            for r in group['rows']:
+                ws.append([r.bench_position, r.seat_label, r.student_reg_no or 'VACANT', r.student_name or 'VACANT', r.year or '-', r.department or '-'])
+                color = '808080' if not r.student_reg_no else ('1565C0' if r.year == 'IV Year' else 'C62828')
+                for c in ws[ws.max_row]: c.font = Font(color=color, strike=not bool(r.student_reg_no))
+            for col_idx in range(1, ws.max_column + 1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = 22
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        return send_file(buf, as_attachment=True, download_name='seating_allocation.xlsx',
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet
+    buf = io.BytesIO(); doc = SimpleDocTemplate(buf, pagesize=landscape(A4)); styles = getSampleStyleSheet(); els = []
+    if not groups:
+        els.append(Paragraph('No seating allocation found for the selected CIA/date.', styles['Normal']))
+    for idx, group in enumerate(groups):
+        if idx: els.append(PageBreak())
+        els += [Paragraph('Adhiyamaan College of Engineering', styles['Title']),
+                Paragraph(f"CIA {cia_id} Seating Allocation - {exam_date.strftime('%d-%m-%Y')}", styles['Heading2']),
+                Paragraph(f"Hall: {group['hall'].hall_name} | Block: {group['hall'].block or '-'} | Floor: {group['hall'].floor or '-'}", styles['Normal']), Spacer(1, 10)]
+        data = [['Bench Pos', 'Seat Label', 'Reg No', 'Name', 'Year', 'Department']] + [
+            [r.bench_position, r.seat_label, r.student_reg_no or 'VACANT', r.student_name or 'VACANT', r.year or '-', r.department or '-']
+            for r in group['rows']]
+        table = Table(data, repeatRows=1)
+        table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1A237E')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),0.4,colors.grey),('FONTSIZE',(0,0),(-1,-1),8)]))
+        els += [table, Spacer(1, 10), Paragraph(f'Generated by {current_user.name} on {datetime.now().strftime("%d %b %Y %H:%M")}', styles['Normal'])]
+    doc.build(els); buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='seating_allocation.pdf', mimetype='application/pdf')
+
+
 @admin_bp.route('/seating')
 @login_required
 def seating_allotment():
@@ -1749,6 +2056,87 @@ def submit_attendance(hall_number):
 
 
 # ─── ATTENDANCE OVERVIEW (admin/HOD) ─────────────────────────────────────────
+# --- GENERATED ATTENDANCE SUMMARY ---------------------------------------------
+@admin_bp.route('/attendance-summary')
+@login_required
+@admin_required
+def attendance_summary():
+    cia_id = _cia_int(request.args.get('cia_id')) or 1
+    exam_date = _parse_date(request.args.get('exam_date', '')) or date.today()
+    year_filter = request.args.get('year', '')
+    dept_filter = request.args.get('department', '')
+    groups = _attendance_summary_data(cia_id, exam_date, year_filter, dept_filter)
+    departments = [d[0] for d in db.session.query(SeatingAllocation.department).filter(SeatingAllocation.department != None).distinct().all()]
+    return render_template('admin/attendance_summary.html', groups=groups, cia_id=cia_id,
+                           exam_date=exam_date, year_filter=year_filter, dept_filter=dept_filter,
+                           departments=sorted([d for d in departments if d]))
+
+
+def _attendance_summary_data(cia_id, exam_date, year_filter='', dept_filter=''):
+    if not cia_id or not exam_date:
+        return []
+    halls = db.session.query(Hall).join(SeatingAllocation).filter(
+        SeatingAllocation.cia_id == cia_id,
+        SeatingAllocation.exam_date == exam_date,
+        SeatingAllocation.student_reg_no != None
+    ).group_by(Hall.id).order_by(Hall.id).all()
+    groups = []
+    for hall in halls:
+        q = SeatingAllocation.query.filter_by(cia_id=cia_id, exam_date=exam_date, hall_id=hall.id).filter(SeatingAllocation.student_reg_no != None)
+        if year_filter:
+            q = q.filter_by(year=year_filter)
+        if dept_filter:
+            q = q.filter_by(department=dept_filter)
+        students = q.order_by(SeatingAllocation.bench_position, SeatingAllocation.seat_side).all()
+        detail, present, absent, invigilator = [], 0, 0, ''
+        for s in students:
+            att = HallAttendance.query.filter_by(cia_id=cia_id, hall_id=hall.id, exam_date=exam_date, student_reg_no=s.student_reg_no).first()
+            status = att.status if att else 'Pending'
+            if att and att.invigilator:
+                invigilator = att.invigilator.name
+            present += 1 if status == 'Present' else 0
+            absent += 1 if status == 'Absent' else 0
+            detail.append({'seat': s, 'status': status})
+        marked = HallAttendance.query.filter_by(cia_id=cia_id, hall_id=hall.id, exam_date=exam_date).count() > 0
+        total = len(students)
+        groups.append({'hall': hall, 'total': total, 'present': present, 'absent': absent,
+                       'pct': round((present / total * 100), 1) if total else 0,
+                       'status': 'Marked' if marked else 'Pending',
+                       'invigilator': invigilator, 'detail': detail})
+    return groups
+
+
+@admin_bp.route('/attendance-summary/download')
+@login_required
+@admin_required
+def download_generated_attendance_summary():
+    cia_id = _cia_int(request.args.get('cia_id')) or 1
+    exam_date = _parse_date(request.args.get('exam_date', '')) or date.today()
+    groups = _attendance_summary_data(cia_id, exam_date, request.args.get('year', ''), request.args.get('department', ''))
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active; ws.title = 'Hall Summary'
+    ws.append(['Hall Name', 'Hall No', 'Total', 'Present', 'Absent', '%', 'Status'])
+    detail = wb.create_sheet('Student Detail')
+    detail.append(['Hall Name', 'Bench Pos', 'Seat Label', 'Reg No', 'Name', 'Year', 'Dept', 'Status'])
+    for cell in ws[1] + detail[1]:
+        cell.font = Font(bold=True, color='FFFFFF'); cell.fill = PatternFill('solid', fgColor='1A237E')
+    for g in groups:
+        ws.append([g['hall'].hall_name, g['hall'].hall_number, g['total'], g['present'], g['absent'], g['pct'], g['status']])
+        if g['status'] == 'Pending':
+            for c in ws[ws.max_row]: c.fill = PatternFill('solid', fgColor='FFF59D')
+        for d in g['detail']:
+            s = d['seat']; detail.append([g['hall'].hall_name, s.bench_position, s.seat_label, s.student_reg_no, s.student_name, s.year, s.department, d['status']])
+            fill = 'C8E6C9' if d['status'] == 'Present' else ('FFCDD2' if d['status'] == 'Absent' else 'FFF59D')
+            for c in detail[detail.max_row]: c.fill = PatternFill('solid', fgColor=fill)
+    for sheet in (ws, detail):
+        for col in sheet.columns: sheet.column_dimensions[col[0].column_letter].width = 20
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name='attendance_summary.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @admin_bp.route('/attendance')
 @login_required
 def view_attendance():
