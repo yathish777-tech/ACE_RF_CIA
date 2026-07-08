@@ -214,13 +214,13 @@
               {% else %}<span class="text-muted">No deadline</span>{% endif %}
             </td>
             <td style="padding:9px 12px;">
-              {% if c.application_window_open %}<span class="badge badge-success">✅ Open</span>
+              {% if c.is_application_open() %}<span class="badge badge-success">✅ Open</span>
               {% else %}<span class="badge badge-danger">🔒 Closed</span>{% endif %}
             </td>
             <td style="padding:9px 12px;">
-              <form method="POST" action="{{ url_for('admin.toggle_retest_window', cid=c.id) }}" onsubmit="return confirm('{{ 'Close' if c.application_window_open else 'Open' }} portal for {{ c.subject.subject_name }} CIA {{ c.cia_number }}?')">
-                <button type="submit" class="btn btn-sm {{ 'btn-danger' if c.application_window_open else 'btn-success' }}">
-                  {{ '🔒 Close' if c.application_window_open else '🔓 Open' }}
+              <form method="POST" action="{{ url_for('admin.toggle_retest_window_legacy', cid=c.id) }}" onsubmit="return confirm('{{ 'Close' if c.is_application_open() else 'Open' }} portal for {{ c.subject.subject_name }} CIA {{ c.cia_number }}?')">
+                <button type="submit" class="btn btn-sm {{ 'btn-danger' if c.is_application_open() else 'btn-success' }}">
+                  {{ '🔒 Close' if c.is_application_open() else '🔓 Open' }}
                 </button>
               </form>
             </td>
@@ -299,7 +299,7 @@
             <td><span class="badge badge-primary" style="font-size:9px;">CIA {{ c.cia_number }}</span></td>
             <td style="font-size:11px;">{{ c.exam_date.strftime('%d %b %Y') }}</td>
             <td style="font-size:11px;">{% if c.application_end_date %}<span style="color:#e65100;">{{ c.application_end_date.strftime('%d %b %Y') }}</span>{% else %}—{% endif %}</td>
-            <td><span class="badge {% if c.application_window_open %}badge-success{% else %}badge-danger{% endif %}" style="font-size:9px;">{{ '✅' if c.application_window_open else '🔒' }}</span></td>
+            <td><span class="badge {% if c.is_application_open() %}badge-success{% else %}badge-danger{% endif %}" style="font-size:9px;">{{ '✅' if c.is_application_open() else '🔒' }}</span></td>
           </tr>
           {% else %}
           <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px;">No CIA dates yet</td></tr>

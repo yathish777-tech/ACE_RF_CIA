@@ -183,32 +183,60 @@ def _upsert_student_record(register_number, name, year, section, email='', phone
     name = _clean_cell(name)
     email = _clean_cell(email).lower()
     phone = _clean_cell(phone)
+
+    print("=" * 80)
+    print("Processing Student")
+    print(f"Register Number : {register_number}")
+    print(f"Name            : {name}")
+    print(f"Year            : {year}")
+    print(f"Section         : {section}")
+    print(f"Email           : {email}")
+    print(f"Phone           : {phone}")
+
     errors = _validate_student_payload(register_number, name, year, section)
     if errors:
+        print("VALIDATION FAILED:", errors)
         return 'skipped', '; '.join(errors)
 
     existing = _find_student_by_register(register_number)
     email_user = None
+
     if email:
-        email_user = User.query.filter(db.func.lower(User.email) == email).first()
+        email_user = User.query.filter(
+            db.func.lower(User.email) == email
+        ).first()
+
         if email_user and email_user.role != 'student':
+            print("SKIPPED: Email belongs to staff/admin")
             return 'skipped', f'Email {email} belongs to a staff/admin account.'
+
         if existing and email_user and email_user.id != existing.id:
+            print("SKIPPED: Email belongs to another student")
             return 'skipped', f'Email {email} belongs to another student.'
+
         if not existing:
             existing = email_user
 
     if existing:
+        print("Updating existing student...")
+
         existing.name = name
         existing.register_number = register_number
         existing.year = year
         existing.section = section
+
         if email:
             existing.email = email
+
         if phone:
             existing.phone = phone
+
         existing.is_active = True
+
+        print("UPDATED SUCCESSFULLY")
         return 'updated', ''
+
+    print("Creating new student...")
 
     student = User(
         name=name,
@@ -220,8 +248,14 @@ def _upsert_student_record(register_number, name, year, section, email='', phone
         section=section,
         is_active=True
     )
+
     student.set_password(STUDENT_DEFAULT_PASSWORD)
+
     db.session.add(student)
+
+    print("ADDED TO SESSION")
+    print("=" * 80)
+
     return 'added', ''
 
 
@@ -303,49 +337,148 @@ def manage_students():
 @admin_required
 def upload_students():
     f = request.files.get('student_file')
+
     if not f or not f.filename:
         flash('Please select a Student Details file.', 'danger')
         return redirect(url_for('admin.manage_students'))
+
     ext = f.filename.rsplit('.', 1)[-1].lower()
+
     if ext not in ('xlsx', 'xls', 'csv'):
         flash('Only Excel (.xlsx/.xls) or CSV files accepted.', 'danger')
         return redirect(url_for('admin.manage_students'))
 
-    added = updated = skipped = 0
+    added = 0
+    updated = 0
+    skipped = 0
+
     try:
         import pandas as pd
-        df = pd.read_csv(f, dtype=str) if ext == 'csv' else pd.read_excel(f, dtype=str)
+
+        # Read file
+        if ext == 'csv':
+            df = pd.read_csv(f, dtype=str)
+        else:
+            df = pd.read_excel(f, dtype=str)
+
+        # Normalize column names
         df.columns = [_normalize_column_name(c) for c in df.columns]
 
-        for _, row in df.iterrows():
-            register_number = _normalize_register_number(_row_value(
-                row, 'register_number', 'register_no', 'reg_no', 'reg', 'roll_no'))
-            name = _row_value(row, 'name', 'student_name', 'student')
-            year = _parse_year(_row_value(row, 'year', 'yr'))
-            section = _parse_section(_row_value(row, 'section', 'sec'))
-            email = _row_value(row, 'email', 'email_id', 'student_email', 'student_email_id')
-            phone = _row_value(row, 'phone', 'phone_number', 'mobile')
+        print("\n================ STUDENT UPLOAD STARTED ================\n")
+        print("Columns Found:", df.columns.tolist())
+        print("\nFirst 5 Rows:")
+        print(df.head())
+        print("\n========================================================\n")
 
-            if not email:
-                skipped += 1
-                continue
+        for index, row in df.iterrows():
 
-            status, _ = _upsert_student_record(register_number, name, year, section, email, phone)
+            register_number = _normalize_register_number(
+                _row_value(
+                    row,
+                    'register_number',
+                    'registernumber',
+                    'register_no',
+                    'reg_no',
+                    'reg',
+                    'roll_no'
+                )
+            )
+
+            name = _row_value(
+                row,
+                'name',
+                'student_name',
+                'student'
+            )
+
+            year = _parse_year(
+                _row_value(
+                    row,
+                    'year',
+                    'yr'
+                )
+            )
+
+            section = _parse_section(
+                _row_value(
+                    row,
+                    'section',
+                    'sec'
+                )
+            )
+
+            email = _row_value(
+                row,
+                'email',
+                'email_id',
+                'student_email',
+                'student_email_id'
+            )
+
+            phone = _row_value(
+                row,
+                'phone',
+                'phone_number',
+                'mobile'
+            )
+
+            print("\n--------------------------------------------------")
+            print(f"Row             : {index + 1}")
+            print(f"Register Number : {register_number}")
+            print(f"Name            : {name}")
+            print(f"Year            : {year}")
+            print(f"Section         : {section}")
+            print(f"Email           : {email}")
+            print(f"Phone           : {phone}")
+
+            status, message = _upsert_student_record(
+                register_number,
+                name,
+                year,
+                section,
+                email,
+                phone
+            )
+
+            print(f"Status          : {status}")
+            print(f"Message         : {message}")
+            print("--------------------------------------------------")
+
             if status == 'added':
                 added += 1
+
             elif status == 'updated':
                 updated += 1
+
             else:
                 skipped += 1
 
+        print("\n================ COMMITTING DATABASE ================\n")
         db.session.commit()
-        flash(f'Student upload complete: {added} added, {updated} updated, {skipped} skipped. '
-              f'Default password for new accounts: {STUDENT_DEFAULT_PASSWORD}', 'success')
+        print("DATABASE COMMIT SUCCESSFUL")
+        print(f"Added   : {added}")
+        print(f"Updated : {updated}")
+        print(f"Skipped : {skipped}")
+        print("\n=====================================================\n")
+
+        flash(
+            f'Student upload complete: '
+            f'{added} added, '
+            f'{updated} updated, '
+            f'{skipped} skipped. '
+            f'Default password for new accounts: {STUDENT_DEFAULT_PASSWORD}',
+            'success'
+        )
+
     except Exception as e:
         db.session.rollback()
+        print("\n================ ERROR =================")
+        import traceback
+        traceback.print_exc()
+        print("=========================================\n")
         flash(f'Student upload error: {e}', 'danger')
-    return redirect(url_for('admin.manage_students'))
 
+    return redirect(url_for('admin.manage_students'))
 
 @admin_bp.route('/students/save', methods=['POST'])
 @login_required
@@ -682,9 +815,9 @@ def bulk_upload_cia():
 
 
 # ─── PORTAL WINDOW CONTROLS ──────────────────────────────────────────────────
-@admin_bp.route('/cia-dates/<int:cid>/toggle-window', methods=['POST'])
+@admin_bp.route('/bulk-upload/cia-dates/<int:cid>/toggle-window', methods=['POST'])
 @login_required
-def toggle_retest_window(cid):
+def toggle_retest_window_legacy(cid):
     allowed = (current_user.role == 'admin' or
                current_user.role == 'hod' or
                current_user.secondary_role == 'hod')
@@ -692,9 +825,15 @@ def toggle_retest_window(cid):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     cia = CIADate.query.get_or_404(cid)
-    cia.application_window_open = not cia.application_window_open
+    today = date.today()
+    if cia.is_application_open():
+        cia.application_end_date = today - timedelta(days=1)
+    else:
+        if not cia.exam_date or cia.exam_date >= today:
+            cia.exam_date = today - timedelta(days=1)
+        cia.application_end_date = today + timedelta(days=7)
     db.session.commit()
-    state = 'OPENED' if cia.application_window_open else 'CLOSED'
+    state = 'OPENED' if cia.is_application_open() else 'CLOSED'
     flash(f'Portal window {state} for {cia.subject.subject_name} — CIA {cia.cia_number}.', 'success')
     return redirect(request.referrer or url_for('admin.manage_cia_dates'))
 
@@ -713,7 +852,6 @@ def set_retest_window(cid):
     try:
         new_end = datetime.strptime(open_date, '%Y-%m-%d').date()
         cia.application_end_date    = new_end
-        cia.application_window_open = True
         db.session.commit()
         flash(f'Portal reopened for {cia.subject.subject_name} CIA {cia.cia_number}. '
               f'New deadline: {new_end.strftime("%d %b %Y")}.', 'success')
@@ -1093,7 +1231,34 @@ def delete_cia_date(cid):
     db.session.delete(c); db.session.commit()
     flash('CIA date deleted.','success')
     return redirect(url_for('admin.manage_cia_dates'))
+from datetime import date, timedelta
 
+@admin_bp.route('/cia-dates/<int:cia_id>/toggle-window', methods=['POST'])
+@login_required
+@admin_required
+def toggle_retest_window(cia_id):
+    cia = CIADate.query.get_or_404(cia_id)
+
+    today = date.today()
+
+    # If the window is currently open, close it.
+    if cia.is_application_open():
+        cia.application_end_date = today - timedelta(days=1)
+        flash('Retest application window closed successfully.', 'success')
+    else:
+        # Open the application window.
+        # The exam must be in the past for is_application_open() to return True.
+        if not cia.exam_date or cia.exam_date >= today:
+            cia.exam_date = today - timedelta(days=1)
+
+        # Keep applications open for the next 7 days.
+        cia.application_end_date = today + timedelta(days=7)
+
+        flash('Retest application window opened successfully.', 'success')
+
+    db.session.commit()
+
+    return redirect(url_for('admin.manage_cia_dates'))
 
 # ─── ABSENTEES ───────────────────────────────────────────────────────────────
 @admin_bp.route('/absentees')

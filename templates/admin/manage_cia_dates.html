@@ -197,11 +197,11 @@
           <div class="window-pill {{ 'open' if is_open else 'closed' }}">
             <span class="dot"></span>
             {% if is_open %}
-              ✅ Application Open
-            {% elif deadline_passed and c.application_window_open %}
-              🕐 Deadline Passed — Auto Closed
+            ✅ Application Open
+            {% elif deadline_passed %}
+            🕐 Deadline Passed — Auto Closed
             {% else %}
-              🔒 Application Closed
+             🔒 Application Closed
             {% endif %}
           </div>
         </div>
@@ -242,7 +242,7 @@
         <!-- Toggle open/close -->
         <div class="cia-action-group">
           <span class="cia-action-label">Window:</span>
-          <form method="POST" action="{{ url_for('admin.toggle_retest_window', cid=c.id) }}" style="display:inline;">
+          <form method="POST" action="{{ url_for('admin.toggle_retest_window', cia_id=c.id) }}" style="display:inline;">
             <button type="submit"
               class="btn btn-sm {{ 'btn-danger' if is_open else 'btn-success' }}"
               onclick="return confirm('{{ 'Close' if is_open else 'Open' }} retest window for {{ c.subject.subject_name }} CIA {{ c.cia_number }}?')"
@@ -383,7 +383,6 @@
   </div>
 </div>
 {% endblock %}
-
 {% block scripts %}
 <script>
 function openEditCIA(id, examDate, retestDate, endDate, acYear) {

@@ -2,7 +2,7 @@ import io
 from flask import Blueprint, render_template, redirect, url_for, flash, request, send_file
 from flask_login import login_required, current_user
 from models import db, RetestApplication, CIADate, User
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 
 hod_bp = Blueprint('hod', __name__)
@@ -155,9 +155,17 @@ def retransmit(app_id):
 @hod_required
 def toggle_window(cid):
     cia = CIADate.query.get_or_404(cid)
-    cia.application_window_open = not cia.application_window_open
+    today = date.today()
+    if cia.is_application_open():
+        cia.application_end_date = today - timedelta(days=1)
+        state = 'closed'
+    else:
+        if not cia.exam_date or cia.exam_date >= today:
+            cia.exam_date = today - timedelta(days=1)
+        cia.application_end_date = today + timedelta(days=7)
+        state = 'opened'
     db.session.commit()
-    flash(f'Retest window {"opened" if cia.application_window_open else "closed"} for CIA {cia.cia_number} — {cia.subject.subject_name}.', 'success')
+    flash(f'Retest window {state} for CIA {cia.cia_number} — {cia.subject.subject_name}.', 'success')
     return redirect(url_for('hod.dashboard'))
 
 
