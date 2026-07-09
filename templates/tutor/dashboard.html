@@ -4,7 +4,7 @@
 {% block page_title %}Tutor Dashboard{% endblock %}
 
 {% block sidebar_nav %}
-{% if current_user.secondary_role == "subject_staff" or current_user.role == "subject_staff" %}
+{% if has_role('subject_staff') %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">📚</span> Staff Dashboard</a>
 {% endif %}
 <a href="{{ url_for('tutor.dashboard') }}" class="nav-item active"><span class="nav-icon">🏠</span> Dashboard</a>

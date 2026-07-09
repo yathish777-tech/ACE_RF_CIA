@@ -5,18 +5,13 @@ from sqlalchemy import and_
 from models import db, RetestApplication, SeatingAllotment, ExamAttendance, AbsenceRecord
 from datetime import datetime
 from functools import wraps
+from utils.permissions import role_required
 
 tutor_bp = Blueprint('tutor', __name__)
 SEMESTER_TO_YEAR = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4}
 
 def tutor_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not (current_user.role == 'tutor' or current_user.secondary_role == 'tutor'):
-            flash('Access denied.', 'danger')
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated
+    return role_required('tutor')(f)
 
 
 def _assigned_class():

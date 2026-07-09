@@ -4,6 +4,12 @@
 {% block sidebar_nav %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item">Dashboard</a>
 <a href="{{ url_for('staff.hall_attendance') }}" class="nav-item active">Hall Attendance</a>
+{% if has_role('coordinator') %}
+<a href="{{ url_for('coordinator.dashboard') }}" class="nav-item">Coordinator Dashboard</a>
+{% endif %}
+{% if has_role('hod') %}
+<a href="{{ url_for('hod.dashboard') }}" class="nav-item">HOD Dashboard</a>
+{% endif %}
 {% endblock %}
 {% block content %}
 <div class="page-header"><div><h2>Hall Attendance</h2><p>Load a CIA/date, select a hall, and mark attendance.</p></div></div>
@@ -21,13 +27,104 @@
 {% endblock %}
 {% block scripts %}
 <script>
-let currentHall=null, submitted=false;
-async function loadHalls(){const q=new URLSearchParams({cia_id:ciaId.value,exam_date:examDate.value});const data=await fetch(`{{ url_for('staff.hall_attendance_halls') }}?${q}`).then(r=>r.json());hallCards.innerHTML='';data.halls.forEach(h=>{const color=h.status==='Marked'?'badge-success':'badge-danger';hallCards.innerHTML+=`<button class="card" style="text-align:left;" onclick="loadStudents(${h.id}, '${h.hall_name||''}')"><div class="card-body"><h3>${h.hall_name||h.id}</h3><p>Block ${h.block||'-'} | Floor ${h.floor||'-'}</p><span class="badge badge-primary">${h.total} students</span> <span class="badge ${color}">${h.status}</span></div></button>`;});}
-async function loadStudents(hallId,name){currentHall=hallId;const q=new URLSearchParams({cia_id:ciaId.value,exam_date:examDate.value,hall_id:hallId});const data=await fetch(`{{ url_for('staff.hall_attendance_students') }}?${q}`).then(r=>r.json());submitted=data.submitted;hallTitle.textContent=name;lastInfo.textContent=data.submitted?`Last submitted by: ${data.last_by} at ${data.last_at}`:'';editBtn.style.display=data.submitted?'inline-flex':'none';studentRows.innerHTML='';data.students.forEach(s=>{const vacant=!s.student_reg_no;studentRows.innerHTML+=`<tr data-reg="${s.student_reg_no||''}"><td>${s.bench_position}</td><td>${s.seat_label}</td><td>${s.student_reg_no||'<span style="color:#777;">VACANT</span>'}</td><td>${s.student_name||'VACANT'}</td><td>${s.year||'-'}</td><td>${s.department||'-'}</td><td>${vacant?'<span class="badge badge-secondary">VACANT</span>':toggleHtml(s.status,data.submitted)}</td></tr>`;});attendancePanel.style.display='block';}
-function toggleHtml(status,disabled){return `<button class="btn btn-sm ${status==='Present'?'btn-success':'btn-danger'} status-toggle" ${disabled?'disabled':''} onclick="toggleStatus(this)">${status}</button>`}
+const staffSelect = document.getElementById('staffId');
+const ciaSelect = document.getElementById('ciaId');
+const examDateInput = document.getElementById('examDate');
+const hallCardsEl = document.getElementById('hallCards');
+const attendancePanelEl = document.getElementById('attendancePanel');
+const hallTitleEl = document.getElementById('hallTitle');
+const lastInfoEl = document.getElementById('lastInfo');
+const editBtnEl = document.getElementById('editBtn');
+const studentRowsEl = document.getElementById('studentRows');
+let currentHall=null, currentSource='allocation', currentHallKey='', submitted=false;
+
+window.addEventListener('error', event => {
+  console.error('[hall-attendance] JavaScript error', event.error || event.message);
+});
+window.addEventListener('unhandledrejection', event => {
+  console.error('[hall-attendance] Unhandled promise rejection', event.reason);
+});
+
+function renderEmptyHalls(message) {
+  hallCardsEl.innerHTML = `<div class="card" style="grid-column:1 / -1;"><div class="card-body text-muted">${message}</div></div>`;
+}
+
+async function loadHalls(){
+  try {
+    const q=new URLSearchParams({staff_id:staffSelect.value,cia_id:ciaSelect.value,exam_date:examDateInput.value});
+    const url=`{{ url_for('staff.hall_attendance_halls') }}?${q}`;
+    console.log('[hall-attendance] Fetching halls', url);
+    const response=await fetch(url);
+    console.log('[hall-attendance] halls response', response.status, response);
+    const data=await response.json();
+    console.log('[hall-attendance] halls json', data);
+    const halls=Array.isArray(data.halls)?data.halls:[];
+    console.log('[hall-attendance] halls received', halls.length);
+
+    hallCardsEl.innerHTML='';
+    attendancePanelEl.style.display='none';
+    if (!halls.length) {
+      renderEmptyHalls('No halls found for the selected CIA/date.');
+      return;
+    }
+
+    halls.forEach(h=>{
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='card';
+      button.style.textAlign='left';
+      button.addEventListener('click',()=>loadStudents(h));
+
+      const body=document.createElement('div');
+      body.className='card-body';
+      const title=document.createElement('h3');
+      title.textContent=h.hall_name||h.hall_number||h.key||h.id;
+      const meta=document.createElement('p');
+      meta.textContent=h.block||h.floor?`Block ${h.block||'-'} | Floor ${h.floor||'-'}`:`Hall ${h.hall_number||h.key||h.id}`;
+      const total=document.createElement('span');
+      total.className='badge badge-primary';
+      total.textContent=`${h.total||0} students`;
+      const status=document.createElement('span');
+      status.className=`badge ${h.status==='Marked'?'badge-success':'badge-danger'}`;
+      status.style.marginLeft='4px';
+      status.textContent=h.status||'Pending';
+      body.append(title,meta,total,status);
+      button.appendChild(body);
+      hallCardsEl.appendChild(button);
+    });
+  } catch (err) {
+    console.error('[hall-attendance] loadHalls failed', err);
+    renderEmptyHalls('Unable to load halls. Check the browser console and Flask logs.');
+  }
+}
+
+async function loadStudents(hall){
+  currentHall=hall.id;
+  currentSource=hall.source||'allocation';
+  currentHallKey=hall.key||hall.hall_number||String(hall.id);
+  const name=hall.hall_name||hall.hall_number||currentHallKey;
+  const q=new URLSearchParams({cia_id:ciaSelect.value,exam_date:examDateInput.value,hall_id:hall.id,hall_key:currentHallKey,source:currentSource});
+  const url=`{{ url_for('staff.hall_attendance_students') }}?${q}`;
+  console.log('[hall-attendance] Fetching students', url);
+  const response=await fetch(url);
+  console.log('[hall-attendance] students response', response.status, response);
+  const data=await response.json();
+  console.log('[hall-attendance] students json', data);
+  submitted=data.submitted;
+  hallTitleEl.textContent=name;
+  lastInfoEl.textContent=data.submitted?`Last submitted by: ${data.last_by} at ${data.last_at}`:'';
+  editBtnEl.style.display=data.submitted?'inline-flex':'none';
+  studentRowsEl.innerHTML='';
+  data.students.forEach(s=>{
+    const vacant=!s.student_reg_no;
+    studentRowsEl.innerHTML+=`<tr data-source="${s.source||currentSource}" data-seating-id="${s.seating_id||''}" data-reg="${s.student_reg_no||''}"><td>${s.bench_position}</td><td>${s.seat_label}</td><td>${s.student_reg_no||'<span style="color:#777;">VACANT</span>'}</td><td>${s.student_name||'VACANT'}</td><td>${s.year||'-'}</td><td>${s.department||'-'}</td><td>${vacant?'<span class="badge badge-secondary">VACANT</span>':toggleHtml(s.status,data.submitted)}</td></tr>`;
+  });
+  attendancePanelEl.style.display='block';
+}
+function toggleHtml(status,disabled){return `<button type="button" class="btn btn-sm ${status==='Present'?'btn-success':'btn-danger'} status-toggle" ${disabled?'disabled':''} onclick="toggleStatus(this)">${status}</button>`}
 function toggleStatus(btn){const next=btn.textContent.trim()==='Present'?'Absent':'Present';btn.outerHTML=toggleHtml(next,false);}
 function setAll(status){document.querySelectorAll('.status-toggle:not(:disabled)').forEach(btn=>btn.outerHTML=toggleHtml(status,false));}
 function enableEdit(){document.querySelectorAll('.status-toggle').forEach(btn=>btn.disabled=false);}
-async function saveAttendance(){const attendance=[...document.querySelectorAll('#studentRows tr')].map(tr=>({student_reg_no:tr.dataset.reg,status:tr.querySelector('.status-toggle')?.textContent.trim()})).filter(x=>x.student_reg_no);const res=await fetch(`{{ url_for('staff.save_hall_attendance') }}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cia_id:ciaId.value,hall_id:currentHall,exam_date:examDate.value,staff_id:staffId.value,attendance})});const data=await res.json();alert(data.message||'Saved');loadStudents(currentHall,hallTitle.textContent);}
+async function saveAttendance(){const attendance=[...document.querySelectorAll('#studentRows tr')].map(tr=>({source:tr.dataset.source,seating_id:tr.dataset.seatingId,student_reg_no:tr.dataset.reg,status:tr.querySelector('.status-toggle')?.textContent.trim()})).filter(x=>x.student_reg_no);const payload={source:currentSource,cia_id:ciaSelect.value,hall_id:currentHall,hall_key:currentHallKey,exam_date:examDateInput.value,staff_id:staffSelect.value,attendance};console.log('[hall-attendance] save payload',payload);const res=await fetch(`{{ url_for('staff.save_hall_attendance') }}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});console.log('[hall-attendance] save response',res.status,res);const data=await res.json();console.log('[hall-attendance] save json',data);alert(data.message||'Saved');loadStudents({id:currentHall,key:currentHallKey,hall_name:hallTitleEl.textContent,source:currentSource});}
 </script>
 {% endblock %}

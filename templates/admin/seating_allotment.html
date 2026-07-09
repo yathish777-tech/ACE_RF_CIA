@@ -140,7 +140,7 @@
             {% endif %}
           </td>
           <td>
-            {% if current_user.role in ['admin','hod'] or current_user.secondary_role == 'hod' %}
+            {% if has_role('admin', 'hod') %}
             <form method="POST" action="{{ url_for('admin.assign_invigilator', sa_id=row.id) }}" style="display:flex;gap:6px;align-items:center;">
               <select name="invigilator_id" class="form-control" style="min-width:180px;padding:6px 8px;font-size:12px;">
                 <option value="">Unassigned</option>
@@ -162,7 +162,7 @@
                       data-entry='{{ {"id": row.id, "hall_number": row.hall_number, "exam_date": row.exam_date.isoformat() if row.exam_date else "", "year": row.year, "section": row.section, "register_numbers": regs, "num_students": row.num_students, "total_students": row.total_students, "invigilator_id": row.invigilator_id}|tojson }}'
                       onclick="editHall(this)">Edit</button>
               <a href="{{ url_for('admin.mark_attendance_page', hall_number=row.hall_number) }}" class="btn btn-primary btn-sm">Open Hall</a>
-              {% if current_user.role == 'admin' %}
+              {% if has_role('admin') %}
               <form method="POST" action="{{ url_for('admin.delete_seating', sa_id=row.id) }}" onsubmit="return confirm('Delete this hall allotment?');">
                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>
               </form>

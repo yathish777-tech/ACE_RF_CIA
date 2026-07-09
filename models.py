@@ -160,8 +160,8 @@ class CIADate(db.Model):
         """Return True if today is within the application window."""
         today = date.today()
         if self.exam_date and self.application_end_date:
-            # Applications open AFTER exam and close on the deadline
-            return self.exam_date < today <= self.application_end_date
+            # Applications open on the exam date and close after the deadline.
+            return self.exam_date <= today <= self.application_end_date
         return False
 
     def __repr__(self):
@@ -470,3 +470,7 @@ class HallAttendance(db.Model):
         db.UniqueConstraint('cia_id', 'hall_id', 'student_reg_no', 'exam_date',
                             name='unique_attendance'),
     )
+
+    def __repr__(self):
+        return (f'<HallAttendance id={self.id} cia={self.cia_id} hall={self.hall_id} '
+                f'reg={self.student_reg_no} date={self.exam_date} status={self.status}>')

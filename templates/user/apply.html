@@ -210,6 +210,22 @@
               </label>
               {% endfor %}
             </div>
+            <div style="margin-top:12px;padding:12px 14px;border:1px solid #dbeafe;border-radius:9px;background:#f8fafc;">
+              <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                <input type="checkbox" name="absentee_acknowledged" value="1"
+                       id="absenteeAcknowledged"
+                       {% if form.get('absentee_acknowledged') == '1' %}checked{% endif %}>
+                <span>
+                  <strong>I acknowledge the absentee declaration.</strong>
+                  <div style="font-size:12px;color:#6b7280;margin-top:2px;">
+                    Required for late submission requests. Pre-submission requests can be submitted without this acknowledgement.
+                  </div>
+                </span>
+              </label>
+              {% if errors.absentee_acknowledged %}
+              <div class="inline-err" style="margin-top:8px;">⚠️ {{ errors.absentee_acknowledged }}</div>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
@@ -579,6 +595,16 @@ document.querySelectorAll('.type-label').forEach(function(lbl) {
 document.getElementById('applyForm').addEventListener('submit', function(e) {
   var errBox = document.getElementById('submitErrBox');
   errBox.style.display = 'none';
+
+  var submissionType = document.querySelector('input[name="submission_type"]:checked');
+  var ackBox = document.getElementById('absenteeAcknowledged');
+  if (submissionType && submissionType.value === 'late' && !ackBox.checked) {
+    e.preventDefault();
+    errBox.textContent = 'Please acknowledge the absentee declaration before submitting a late submission request.';
+    errBox.style.display = 'block';
+    ackBox.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
 
   // Check CIA date filled
   var ciaDate = document.getElementById('ciaDateInput').value;

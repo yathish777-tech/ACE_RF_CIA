@@ -3,10 +3,17 @@
 {% block page_title %}Attendance Summary{% endblock %}
 {% block sidebar_nav %}
 <span class="nav-section-label">Overview</span>
+{% if has_role('hod') and not has_role('admin') %}
+<a href="{{ url_for('hod.dashboard') }}" class="nav-item">HOD Dashboard</a>
+{% if has_role('subject_staff') %}
+<a href="{{ url_for('staff.dashboard') }}" class="nav-item">Staff Dashboard</a>
+{% endif %}
+{% else %}
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item">Dashboard</a>
 <span class="nav-section-label" style="margin-top:10px;">Seating</span>
 <a href="{{ url_for('admin.manage_halls') }}" class="nav-item">Manage Halls</a>
 <a href="{{ url_for('admin.seating_allocation') }}" class="nav-item">Seating Allocation</a>
+{% endif %}
 <a href="{{ url_for('admin.attendance_summary') }}" class="nav-item active">Attendance Summary</a>
 {% endblock %}
 {% block content %}

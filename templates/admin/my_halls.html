@@ -4,16 +4,16 @@
 
 {% block sidebar_nav %}
 <span class="nav-section-label">Navigation</span>
-{% if current_user.role == 'admin' %}
+{% if has_role('admin') %}
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item"><span class="nav-icon">📊</span> Dashboard</a>
 <a href="{{ url_for('admin.manage_students') }}" class="nav-item"><span class="nav-icon">🎓</span> Students</a>
 <a href="{{ url_for('admin.manage_halls') }}" class="nav-item {% if request.endpoint=='admin.manage_halls' %}active{% endif %}"><span class="nav-icon">H</span> Manage Halls</a>
 <a href="{{ url_for('admin.seating_allocation') }}" class="nav-item"><span class="nav-icon">🪑</span> Seating Allocation</a>
 <a href="{{ url_for('admin.attendance_summary') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Summary</a>
-{% elif current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff' %}
+{% elif has_role('subject_staff') %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
 <a href="{{ url_for('admin.my_halls') }}" class="nav-item active"><span class="nav-icon">🏛</span> All Halls</a>
-{% elif current_user.role == 'tutor' or current_user.secondary_role == 'tutor' %}
+{% elif has_role('tutor') %}
 <a href="{{ url_for('tutor.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
 <a href="{{ url_for('admin.my_halls') }}" class="nav-item active"><span class="nav-icon">🏛</span> All Halls</a>
 {% else %}

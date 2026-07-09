@@ -4,18 +4,12 @@ from flask_login import login_required, current_user
 from models import db, RetestApplication, CIADate
 from datetime import datetime, date
 from functools import wraps
+from utils.permissions import role_required
 
 coordinator_bp = Blueprint('coordinator', __name__)
 
 def coordinator_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not (current_user.role == 'coordinator' or
-                current_user.secondary_role == 'coordinator'):
-            flash('Access denied.', 'danger')
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated
+    return role_required('coordinator')(f)
 
 
 @coordinator_bp.route('/dashboard')

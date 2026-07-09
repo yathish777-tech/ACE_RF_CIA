@@ -16,8 +16,8 @@ class Config:
     MAIL_PORT           = 465
     MAIL_USE_TLS        = False
     MAIL_USE_SSL        = True
-    MAIL_USERNAME       = os.environ.get('MAIL_USERNAME',  'yathishanbu@gmail.com')
-    MAIL_PASSWORD       = os.environ.get('MAIL_PASSWORD',  'ujbywhrwxctovmwc')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME',  'yathishanbu@gmail.com')
+    MAIL_USERNAME       = os.environ.get('MAIL_USERNAME',  'aceciaretest@gmail.com')
+    MAIL_PASSWORD       = os.environ.get('MAIL_PASSWORD',  'wlkxbxyfcihtowma')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME',  'aceciaretest@gmail.com')
     # ↑↑ THIS WAS THE MISSING LINE — Flask-Mail requires MAIL_DEFAULT_SENDER
     # to match MAIL_USERNAME for Gmail. Without it OTP emails silently fail.

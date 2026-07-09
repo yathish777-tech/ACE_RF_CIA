@@ -2,9 +2,10 @@ import os, uuid, re
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, current_app, jsonify, send_from_directory, abort)
 from flask_login import login_required, current_user
-from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection, AbsenceRecord, ExamAttendance
+from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection, AbsenceRecord, HallAttendance
 from datetime import datetime, date
 from functools import wraps
+from utils.permissions import has_role, role_required
 
 user_bp = Blueprint('user', __name__)
 
@@ -18,13 +19,7 @@ ALLOWED = {'pdf', 'jpg', 'jpeg', 'png'}
 # AUTH CHECK
 # =========================
 def student_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if current_user.role != 'student':
-            flash('Access denied.', 'danger')
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated
+    return role_required('student')(f)
 
 
 # =========================
@@ -96,7 +91,7 @@ def get_staff(subject_id):
 
 
 def _normalize_register_number(value):
-    return re.sub(r'\s+', '', str(value or '')).upper()
+    return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
 
 
 def _find_tutor_for_class(year, section):
@@ -126,10 +121,16 @@ def get_tutor_for_class(year, section):
 
 
 def _student_has_absentee_record(subject_id, cia_number, register_number, year=None, section=None):
+    current_app.logger.info(
+        '[retest-absence:absence-record] params subject_id=%s cia_number=%s register=%s year=%s section=%s',
+        subject_id, cia_number, register_number, year, section
+    )
     if not subject_id or not cia_number or not register_number:
+        current_app.logger.info('[retest-absence:absence-record] result=False reason=missing-required-param')
         return False
     register_number = _normalize_register_number(register_number)
     if not register_number:
+        current_app.logger.info('[retest-absence:absence-record] result=False reason=blank-register')
         return False
     section = (section or '').upper().strip()
 
@@ -137,6 +138,10 @@ def _student_has_absentee_record(subject_id, cia_number, register_number, year=N
         subject_id=subject_id,
         cia_number=cia_number
     ).all()
+    current_app.logger.info(
+        '[retest-absence:absence-record] records_found=%s record_ids=%s',
+        len(absence_records), [record.id for record in absence_records]
+    )
     for record in absence_records:
         for student in record.get_students():
             student_reg = _normalize_register_number(
@@ -154,27 +159,85 @@ def _student_has_absentee_record(subject_id, cia_number, register_number, year=N
                 student_year = None
 
             if year and student_year and student_year != year:
+                current_app.logger.info(
+                    '[retest-absence:absence-record] register_match record_id=%s result=False reason=year-mismatch student_year=%s selected_year=%s',
+                    record.id, student_year, year
+                )
                 continue
             if section and student_section and student_section != section:
+                current_app.logger.info(
+                    '[retest-absence:absence-record] register_match record_id=%s result=False reason=section-mismatch student_section=%s selected_section=%s',
+                    record.id, student_section, section
+                )
                 continue
+            current_app.logger.info(
+                '[retest-absence:absence-record] result=True record_id=%s status=listed-absent',
+                record.id
+            )
             return True
+    current_app.logger.info('[retest-absence:absence-record] result=False reason=no-matching-register')
     return False
 
 
-def _student_marked_absent_on_exam_date(register_number, exam_date, year=None, section=None):
+def _student_hall_attendance_absence_status(register_number, cia_number, exam_date):
     register_number = _normalize_register_number(register_number)
-    if not register_number or not exam_date:
-        return False
-    query = ExamAttendance.query.filter(
-        db.func.upper(ExamAttendance.register_number) == register_number,
-        ExamAttendance.exam_date == exam_date,
-        ExamAttendance.status == 'absent'
+    current_app.logger.info(
+        '[retest-absence:hall-attendance] params cia_number=%s exam_date=%s register=%s',
+        cia_number, exam_date, register_number
     )
-    if year:
-        query = query.filter(ExamAttendance.year == year)
-    if section:
-        query = query.filter(db.func.upper(ExamAttendance.section) == section.upper())
-    return query.first() is not None
+    if not register_number or not cia_number or not exam_date:
+        current_app.logger.info('[retest-absence:hall-attendance] result=None reason=missing-required-param')
+        return None
+
+    candidate_records = HallAttendance.query.filter(
+        HallAttendance.cia_id == cia_number,
+        HallAttendance.exam_date == exam_date
+    ).all()
+    records = [
+        record for record in candidate_records
+        if _normalize_register_number(record.student_reg_no) == register_number
+    ]
+    current_app.logger.info(
+        '[retest-absence:hall-attendance] candidates_found=%s records_found=%s details=%s objects=%s',
+        len(candidate_records),
+        len(records),
+        [
+            {
+                'id': record.id,
+                'hall_id': record.hall_id,
+                'register_raw': record.student_reg_no,
+                'register': _normalize_register_number(record.student_reg_no),
+                'cia_id': record.cia_id,
+                'exam_date': record.exam_date.isoformat() if record.exam_date else None,
+                'status': record.status
+            }
+            for record in records
+        ],
+        [repr(record) for record in records]
+    )
+    if not records:
+        current_app.logger.info(
+            '[retest-absence:hall-attendance] result=None reason=no-attendance-row candidate_details=%s',
+            [
+                {
+                    'id': record.id,
+                    'hall_id': record.hall_id,
+                    'register_raw': record.student_reg_no,
+                    'register': _normalize_register_number(record.student_reg_no),
+                    'status': record.status
+                }
+                for record in candidate_records
+            ]
+        )
+        return None
+
+    absent_values = {'absent', 'a'}
+    is_absent = any(str(record.status or '').strip().lower() in absent_values for record in records)
+    current_app.logger.info(
+        '[retest-absence:hall-attendance] result=%s statuses=%s objects=%s',
+        is_absent, [record.status for record in records], [repr(record) for record in records]
+    )
+    return is_absent
 
 
 # =========================
@@ -264,6 +327,11 @@ def apply():
         if form.get('reason_type') == 'others' and not form.get('reason_detail'):
             errors['reason_detail'] = 'Please specify your reason.'
 
+        # Normalize absentee acknowledgement checkbox (backend source-of-truth)
+        form['absentee_acknowledged'] = '1' if request.form.get('absentee_acknowledged') == '1' else '0'
+        if form.get('submission_type') == 'late' and form.get('absentee_acknowledged') != '1':
+            errors['absentee_acknowledged'] = 'Please acknowledge the absentee declaration before submitting a late submission request.'
+
         if form.get('subject_id'):
             existing = RetestApplication.query.filter_by(
                 student_id=current_user.id,
@@ -285,19 +353,49 @@ def apply():
             ).first() if subject_id and cia_number else None
             if not cia:
                 errors['cia_number'] = 'CIA date is not configured for the selected subject.'
-            elif not cia.is_application_open():
-                errors['cia_number'] = 'Application window closed.'
-            elif not (
-                _student_has_absentee_record(
-                    subject_id, cia_number, form.get('register_number', ''),
-                    selected_year, selected_section
-                ) or
-                _student_marked_absent_on_exam_date(
-                    form.get('register_number', ''), cia.exam_date,
-                    selected_year, selected_section
-                )
-            ):
-                errors['subject_id'] = 'Only students marked absent for this CIA exam date can apply for this retest.'
+            else:
+                # Determine application-window semantics:
+                # - Pre-submission: allow while application_end_date >= today (frontend 'retest_open')
+                # - Late submission: allow only after exam_date and before/at application_end_date
+                submission_type = form.get('submission_type', 'pre')
+                today = date.today()
+                retest_open = bool(cia.application_end_date and cia.application_end_date >= today)
+
+                if submission_type == 'pre':
+                    if not retest_open:
+                        errors['cia_number'] = 'Application window closed.'
+                else:  # late
+                    if not cia.is_application_open():
+                        errors['cia_number'] = 'Application window closed.'
+
+                # Only perform absentee-record checks for LATE submissions when CIA window is open
+                if not errors.get('cia_number') and submission_type == 'late':
+                    current_app.logger.info(
+                        '[retest-absence:validation] student_id=%s register_raw=%s register=%s subject_id=%s cia_number=%s exam_date=%s selected_year=%s selected_section=%s cia_object=%s',
+                        current_user.id, form.get('register_number', ''),
+                        _normalize_register_number(form.get('register_number', '')),
+                        subject_id, cia_number, cia.exam_date, selected_year,
+                        selected_section, repr(cia)
+                    )
+                    hall_absence_status = _student_hall_attendance_absence_status(
+                        form.get('register_number', ''), cia_number, cia.exam_date
+                    )
+                    if hall_absence_status is None:
+                        absence_valid = _student_has_absentee_record(
+                            subject_id, cia_number, form.get('register_number', ''),
+                            selected_year, selected_section
+                        )
+                        validation_source = 'absence_record'
+                    else:
+                        absence_valid = hall_absence_status
+                        validation_source = 'hall_attendance'
+
+                    current_app.logger.info(
+                        '[retest-absence:validation] source=%s final_result=%s',
+                        validation_source, absence_valid
+                    )
+                    if not absence_valid:
+                        errors['subject_id'] = 'Only students marked absent for this CIA exam date can apply for this retest.'
 
         file = request.files.get('attachment')
         if not file or not file.filename:
@@ -374,12 +472,11 @@ def view_attachment(app_id):
 
     allowed = (
         application.student_id == current_user.id
-        or current_user.role == 'admin'
-        or current_user.role == 'hod'
-        or current_user.secondary_role == 'hod'
-        or ((current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff')
+        or has_role('admin')
+        or has_role('hod')
+        or (has_role('subject_staff')
             and application.staff_id == current_user.id)
-        or ((current_user.role == 'tutor' or current_user.secondary_role == 'tutor')
+        or (has_role('tutor')
             and (
                 application.tutor_id == current_user.id or
                 (
@@ -387,7 +484,7 @@ def view_attachment(app_id):
                     (getattr(current_user, 'handling_section', '') or '').upper() == (application.student_section or '').upper()
                 )
             ))
-        or ((current_user.role == 'coordinator' or current_user.secondary_role == 'coordinator')
+        or (has_role('coordinator')
             and application.submission_type == 'late')
     )
 

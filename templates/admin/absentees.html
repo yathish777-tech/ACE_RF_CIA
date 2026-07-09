@@ -2,7 +2,7 @@
 {% block title %}Absentee Records{% endblock %}
 {% block page_title %}Absentee Records{% endblock %}
 {% block sidebar_nav %}
-{% if current_user.role == 'hod' or current_user.secondary_role == 'hod' %}
+{% if has_role('hod') %}
 <a href="{{ url_for('hod.dashboard') }}" class="nav-item"><span class="nav-icon">🏠</span> HOD Dashboard</a>
 {% else %}
 <span class="nav-section-label">Overview</span>

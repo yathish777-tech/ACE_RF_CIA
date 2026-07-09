@@ -4,19 +4,13 @@ from flask_login import login_required, current_user
 from models import db, RetestApplication, CIADate, User
 from datetime import datetime, date, timedelta
 from functools import wraps
+from utils.permissions import role_required
 
 hod_bp = Blueprint('hod', __name__)
 SECTIONS = ['A', 'B', 'C']
 
 def hod_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        # Allow both HOD and Admin access
-        if not (current_user.role in ('hod', 'admin') or current_user.secondary_role == 'hod'):
-            flash('Access denied.', 'danger')
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated
+    return role_required('hod', allow_admin=True)(f)
 
 
 def _get_year_section_stats():
@@ -160,8 +154,7 @@ def toggle_window(cid):
         cia.application_end_date = today - timedelta(days=1)
         state = 'closed'
     else:
-        if not cia.exam_date or cia.exam_date >= today:
-            cia.exam_date = today - timedelta(days=1)
+        # Do NOT modify stored `exam_date`. Only set application_end_date to open the window.
         cia.application_end_date = today + timedelta(days=7)
         state = 'opened'
     db.session.commit()

@@ -27,7 +27,22 @@ def create_app(config_class=Config):
 
     @login_manager.user_loader
     def load_user(user_id):
-        return User.query.get(int(user_id))
+        user = User.query.get(int(user_id))
+        if user:
+            app.logger.info(
+                '[auth:user-loader] current_user.id=%s role=%s secondary_role=%s',
+                user.id, user.role, user.secondary_role
+            )
+        return user
+
+    @app.context_processor
+    def inject_permission_helpers():
+        from utils.permissions import has_role, has_any_role, user_roles
+        return {
+            'has_role': has_role,
+            'has_any_role': has_any_role,
+            'user_roles': user_roles
+        }
                   
     # ── Blueprints ────────────────────────────────────────────────────────
     from routes.main          import main_bp

@@ -5,6 +5,7 @@ from flask_login import login_required, current_user
 from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance
 from datetime import datetime, date, timedelta
 from functools import wraps
+from utils.permissions import has_role, has_any_role, role_required, log_current_user_permissions
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -14,23 +15,11 @@ STUDENT_DEFAULT_PASSWORD = 'student123'
 STUDENT_EMAIL_DOMAIN = 'student.local'
 
 def admin_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if current_user.role != 'admin':
-            flash('Access denied.', 'danger')
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated
+    return role_required('admin')(f)
 
 
 def admin_or_hod_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
-            flash('Access denied.', 'danger')
-            return redirect(url_for('main.index'))
-        return f(*args, **kwargs)
-    return decorated
+    return role_required('admin', 'hod')(f)
 
 
 # ─── DASHBOARD ──────────────────────────────────────────────────────────────
@@ -126,6 +115,11 @@ def _parse_date(value):
     text = _clean_cell(value)
     if not text:
         return None
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}', text):
+        try:
+            return datetime.strptime(text, '%Y-%m-%d').date()
+        except ValueError:
+            return None
     try:
         import pandas as pd
         return pd.to_datetime(text, dayfirst=True).date()
@@ -818,10 +812,8 @@ def bulk_upload_cia():
 @admin_bp.route('/bulk-upload/cia-dates/<int:cid>/toggle-window', methods=['POST'])
 @login_required
 def toggle_retest_window_legacy(cid):
-    allowed = (current_user.role == 'admin' or
-               current_user.role == 'hod' or
-               current_user.secondary_role == 'hod')
-    if not allowed:
+    log_current_user_permissions('toggle_retest_window_legacy')
+    if not has_role('admin', 'hod'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     cia = CIADate.query.get_or_404(cid)
@@ -829,8 +821,7 @@ def toggle_retest_window_legacy(cid):
     if cia.is_application_open():
         cia.application_end_date = today - timedelta(days=1)
     else:
-        if not cia.exam_date or cia.exam_date >= today:
-            cia.exam_date = today - timedelta(days=1)
+        # Do NOT modify stored exam_date. Only update the application deadline to open the window.
         cia.application_end_date = today + timedelta(days=7)
     db.session.commit()
     state = 'OPENED' if cia.is_application_open() else 'CLOSED'
@@ -841,10 +832,8 @@ def toggle_retest_window_legacy(cid):
 @admin_bp.route('/cia-dates/<int:cid>/set-window', methods=['POST'])
 @login_required
 def set_retest_window(cid):
-    allowed = (current_user.role == 'admin' or
-               current_user.role == 'hod' or
-               current_user.secondary_role == 'hod')
-    if not allowed:
+    log_current_user_permissions('set_retest_window')
+    if not has_role('admin', 'hod'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     cia = CIADate.query.get_or_404(cid)
@@ -1247,13 +1236,8 @@ def toggle_retest_window(cia_id):
         flash('Retest application window closed successfully.', 'success')
     else:
         # Open the application window.
-        # The exam must be in the past for is_application_open() to return True.
-        if not cia.exam_date or cia.exam_date >= today:
-            cia.exam_date = today - timedelta(days=1)
-
-        # Keep applications open for the next 7 days.
+        # Do NOT modify stored `exam_date`. Only set the application deadline.
         cia.application_end_date = today + timedelta(days=7)
-
         flash('Retest application window opened successfully.', 'success')
 
     db.session.commit()
@@ -1373,22 +1357,21 @@ def download_absentees_cia(cia_num, fmt):
 @login_required
 def retransmit(app_id):
     # Allow the approval roles to restart a rejected application from the failed stage.
-    allowed = (current_user.role in ('admin', 'hod', 'tutor', 'subject_staff') or
-               current_user.secondary_role in ('hod', 'tutor', 'subject_staff'))
-    if not allowed:
+    log_current_user_permissions('retransmit')
+    if not has_role('admin', 'hod', 'tutor', 'subject_staff'):
         flash('Access denied. Only approval staff can retransmit.', 'danger')
         return redirect(url_for('main.index'))
 
     app = RetestApplication.query.get_or_404(app_id)
-    if (current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff') and app.staff_id != current_user.id:
+    if has_role('subject_staff') and app.staff_id != current_user.id:
         flash('You can retransmit only applications assigned to you.', 'danger')
         return redirect(url_for('staff.dashboard'))
 
     if app.final_status != 'rejected':
         flash('Only rejected applications can be retransmitted.', 'warning')
-        if current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff':
+        if has_role('subject_staff'):
             return redirect(url_for('staff.dashboard'))
-        if current_user.role == 'tutor' or current_user.secondary_role == 'tutor':
+        if has_role('tutor'):
             return redirect(url_for('tutor.dashboard'))
         return redirect(url_for('admin.view_application', app_id=app_id))
 
@@ -1409,9 +1392,9 @@ def retransmit(app_id):
     db.session.commit()
     flash(f'Application #{app_id} retransmitted successfully.', 'success')
 
-    if current_user.role == 'subject_staff' or current_user.secondary_role == 'subject_staff':
+    if has_role('subject_staff'):
         return redirect(url_for('staff.dashboard'))
-    if current_user.role == 'tutor' or current_user.secondary_role == 'tutor':
+    if has_role('tutor'):
         return redirect(url_for('tutor.dashboard'))
     return redirect(url_for('admin.view_application', app_id=app_id))
 
@@ -1561,6 +1544,7 @@ def _hall_student_rows(hall_number, allotments):
 # --- HALLS AND GENERATED SEATING ------------------------------------------------
 YEAR_TEXT = {2: 'II Year', 3: 'III Year', 4: 'IV Year'}
 SEAT_POSITIONS = [1,2,3,4,5, 10,9,8,7,6, 11,12,13,14,15, 20,19,18,17,16]
+BENCH_SEATING_PATTERN = [1,10,11,20, 2,9,12,19, 3,8,13,18, 4,7,14,17, 5,6,15,16]
 ROW_MAP = {1:1,2:1,3:1,4:1,5:1,6:2,7:2,8:2,9:2,10:2,11:3,12:3,13:3,14:3,15:3,16:4,17:4,18:4,19:4,20:4}
 COL_MAP = {1:1,2:2,3:3,4:4,5:5,10:1,9:2,8:3,7:4,6:5,11:1,12:2,13:3,14:4,15:5,20:1,19:2,18:3,17:4,16:5}
 
@@ -1571,26 +1555,38 @@ def _cia_int(value):
 
 
 def _student_dicts(year):
-    return [{'register_number': u.register_number, 'name': u.name, 'department': u.department or ''}
-            for u in User.query.filter_by(role='student', year=year, is_active=True)
-            .order_by(User.register_number.asc()).all()]
+    students = User.query.filter(
+        User.role == 'student',
+        User.year == year
+    ).order_by(User.register_number.asc()).all()
+    print(f'--- HALL ALLOCATION STUDENT LIST: YEAR {year} ---')
+    for student in students:
+        print(student.register_number)
+    print(f'--- END HALL ALLOCATION STUDENT LIST: YEAR {year} ({len(students)} students) ---')
+    return [
+        {'register_number': u.register_number, 'name': u.name, 'department': u.department or ''}
+        for u in students
+        if _normalize_register_number(u.register_number)
+    ]
 
 
-def generate_seating(iv_students, iii_students, hall_id, cia_id, exam_date, generated_by):
+def generate_seating(year_students, hall_id, hall_index, hall_count, cia_id, exam_date, generated_by):
     records = []
-    for i, pos in enumerate(SEAT_POSITIONS):
+    for bench_index, seat_number in enumerate(BENCH_SEATING_PATTERN):
         for side, students, label_year, year_name in (
-            ('LEFT', iv_students, 'IV YEAR', 'IV Year'),
-            ('RIGHT', iii_students, 'III YEAR', 'III Year'),
+            ('LEFT', year_students.get(4, []), 'IV Year', 'IV Year'),
+            ('MIDDLE', year_students.get(3, []), 'III Year', 'III Year'),
+            ('RIGHT', year_students.get(2, []), 'II Year', 'II Year'),
         ):
-            s = students[i] if i < len(students) else None
+            student_index = (seat_number - 1) * hall_count + hall_index
+            s = students[student_index] if student_index < len(students) else None
             records.append({
-                'hall_id': hall_id, 'cia_id': cia_id, 'bench_position': pos,
-                'seat_side': side, 'seat_label': f'{label_year}-{pos}' if s else f'{label_year}-{pos} (VACANT)',
+                'hall_id': hall_id, 'cia_id': cia_id, 'bench_position': bench_index + 1,
+                'seat_side': side, 'seat_label': f'{label_year}-{seat_number}' if s else f'{label_year}-{seat_number} (VACANT)',
                 'student_reg_no': s['register_number'] if s else None,
                 'student_name': s['name'] if s else None,
                 'year': year_name, 'department': s['department'] if s else None,
-                'row_group': ROW_MAP[pos], 'col_number': COL_MAP[pos],
+                'row_group': ROW_MAP[seat_number], 'col_number': COL_MAP[seat_number],
                 'exam_date': exam_date, 'generated_by': generated_by
             })
     return records
@@ -1707,14 +1703,14 @@ def seating_allocation():
         if not auto_halls:
             flash('No auto-allocation halls available.', 'danger')
             return redirect(url_for('admin.seating_allocation'))
-        if '2' in selected_years:
-            flash('II Year selected, but this ACE pattern only seats IV Year left and III Year right.', 'warning')
-        iii_students = _student_dicts(3) if '3' in selected_years else []
-        iv_students = _student_dicts(4) if '4' in selected_years else []
+        year_students = {
+            2: _student_dicts(2) if '2' in selected_years else [],
+            3: _student_dicts(3) if '3' in selected_years else [],
+            4: _student_dicts(4) if '4' in selected_years else [],
+        }
         SeatingAllocation.query.filter_by(cia_id=cia_id, exam_date=exam_date).delete()
         for idx, hall in enumerate(auto_halls):
-            records = generate_seating(iv_students[idx*20:(idx+1)*20], iii_students[idx*20:(idx+1)*20],
-                                       hall.id, cia_id, exam_date, current_user.name)
+            records = generate_seating(year_students, hall.id, idx, len(auto_halls), cia_id, exam_date, current_user.name)
             db.session.add_all([SeatingAllocation(**r) for r in records])
         db.session.commit()
         flash('Seating allocation generated.', 'success')
@@ -1806,8 +1802,12 @@ def regenerate_single_hall(hall_id):
     hall_ids = [h.id for h in Hall.query.filter_by(is_special=False).order_by(Hall.id).all()]
     offset = hall_ids.index(hall_id) if hall_id in hall_ids else 0
     SeatingAllocation.query.filter_by(hall_id=hall_id, cia_id=cia_id, exam_date=exam_date).delete()
-    records = generate_seating(_student_dicts(4)[offset*20:(offset+1)*20], _student_dicts(3)[offset*20:(offset+1)*20],
-                               hall_id, cia_id, exam_date, current_user.name)
+    year_students = {
+        2: _student_dicts(2),
+        3: _student_dicts(3),
+        4: _student_dicts(4),
+    }
+    records = generate_seating(year_students, hall_id, offset, len(hall_ids), cia_id, exam_date, current_user.name)
     db.session.add_all([SeatingAllocation(**r) for r in records]); db.session.commit()
     flash('Single hall regenerated.', 'success')
     return redirect(url_for('admin.seating_allocation', cia_id=cia_id, exam_date=exam_date))
@@ -1868,8 +1868,8 @@ def download_seating_allocation(fmt):
 @admin_bp.route('/seating')
 @login_required
 def seating_allotment():
-    if not (current_user.role in ('admin', 'hod', 'coordinator') or
-            current_user.secondary_role in ('hod', 'coordinator')):
+    log_current_user_permissions('seating_allotment')
+    if not has_role('admin', 'hod', 'coordinator'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     allotments = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
@@ -1888,8 +1888,8 @@ def seating_allotment():
 @admin_bp.route('/seating/upload', methods=['POST'])
 @login_required
 def seating_upload():
-    if not (current_user.role in ('admin', 'hod', 'coordinator') or
-            current_user.secondary_role in ('hod', 'coordinator')):
+    log_current_user_permissions('seating_upload')
+    if not has_role('admin', 'hod', 'coordinator'):
         flash('Access denied.', 'danger')
         return redirect(url_for('admin.seating_allotment'))
 
@@ -2050,8 +2050,8 @@ def seating_upload():
 @admin_bp.route('/seating/<int:sa_id>/get')
 @login_required
 def get_seating_entry(sa_id):
-    if not (current_user.role in ('admin', 'hod', 'coordinator') or
-            current_user.secondary_role in ('hod', 'coordinator')):
+    log_current_user_permissions('get_seating_entry')
+    if not has_role('admin', 'hod', 'coordinator'):
         flash('Access denied.', 'danger')
         return redirect(url_for('admin.seating_allotment'))
     sa = SeatingAllotment.query.get_or_404(sa_id)
@@ -2070,7 +2070,8 @@ def get_seating_entry(sa_id):
 @admin_bp.route('/seating/<int:sa_id>/assign', methods=['POST'])
 @login_required
 def assign_invigilator(sa_id):
-    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+    log_current_user_permissions('assign_invigilator')
+    if not has_role('admin', 'hod'):
         flash('Access denied.', 'danger')
         return redirect(url_for('admin.seating_allotment'))
     sa = SeatingAllotment.query.get_or_404(sa_id)
@@ -2100,18 +2101,12 @@ def mark_attendance_page(hall_number):
     if not allotments:
         flash('No seating data found for this hall.', 'warning')
         return redirect(url_for('main.index'))
-    can_access = (
-        current_user.role in ('admin', 'hod', 'coordinator', 'tutor', 'subject_staff') or
-        current_user.secondary_role in ('hod', 'coordinator', 'tutor', 'subject_staff')
-    )
-    if not can_access:
+    log_current_user_permissions('mark_attendance_page')
+    if not has_role('admin', 'hod', 'coordinator', 'tutor', 'subject_staff'):
         flash('You do not have access to mark halls.', 'danger')
         return redirect(url_for('main.index'))
     assigned_invigilators = {a.invigilator_id for a in allotments if a.invigilator_id}
-    is_exam_admin = (
-        current_user.role in ('admin', 'hod', 'coordinator') or
-        current_user.secondary_role in ('hod', 'coordinator')
-    )
+    is_exam_admin = has_role('admin', 'hod', 'coordinator')
     if assigned_invigilators and not is_exam_admin and current_user.id not in assigned_invigilators:
         flash('This hall is assigned to another invigilator.', 'danger')
         return redirect(url_for('admin.my_halls'))
@@ -2130,11 +2125,8 @@ def mark_attendance_page(hall_number):
 @login_required
 def submit_attendance(hall_number):
     allotments = SeatingAllotment.query.filter_by(hall_number=hall_number).all()
-    can_access = (
-        current_user.role in ('admin', 'hod', 'coordinator', 'tutor', 'subject_staff') or
-        current_user.secondary_role in ('hod', 'coordinator', 'tutor', 'subject_staff')
-    )
-    if not can_access:
+    log_current_user_permissions('submit_attendance')
+    if not has_role('admin', 'hod', 'coordinator', 'tutor', 'subject_staff'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     if not allotments:
@@ -2142,10 +2134,7 @@ def submit_attendance(hall_number):
         return redirect(url_for('main.index'))
 
     assigned_invigilators = {a.invigilator_id for a in allotments if a.invigilator_id}
-    is_exam_admin = (
-        current_user.role in ('admin', 'hod', 'coordinator') or
-        current_user.secondary_role in ('hod', 'coordinator')
-    )
+    is_exam_admin = has_role('admin', 'hod', 'coordinator')
     if assigned_invigilators and not is_exam_admin and current_user.id not in assigned_invigilators:
         flash('This hall is assigned to another invigilator.', 'danger')
         return redirect(url_for('admin.my_halls'))
@@ -2214,7 +2203,7 @@ def submit_attendance(hall_number):
 
     db.session.commit()
     flash(f'Attendance saved for hall {hall_number}: {absent_count} absent, {present_count} present ({saved} students).', 'success')
-    is_adm_hod = (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod')
+    is_adm_hod = has_role('admin', 'hod')
     if is_adm_hod:
         return redirect(url_for('admin.view_attendance'))
     return redirect(url_for('admin.mark_attendance_page', hall_number=hall_number))
@@ -2224,7 +2213,7 @@ def submit_attendance(hall_number):
 # --- GENERATED ATTENDANCE SUMMARY ---------------------------------------------
 @admin_bp.route('/attendance-summary')
 @login_required
-@admin_required
+@admin_or_hod_required
 def attendance_summary():
     cia_id = _cia_int(request.args.get('cia_id')) or 1
     exam_date = _parse_date(request.args.get('exam_date', '')) or date.today()
@@ -2273,7 +2262,7 @@ def _attendance_summary_data(cia_id, exam_date, year_filter='', dept_filter=''):
 
 @admin_bp.route('/attendance-summary/download')
 @login_required
-@admin_required
+@admin_or_hod_required
 def download_generated_attendance_summary():
     cia_id = _cia_int(request.args.get('cia_id')) or 1
     exam_date = _parse_date(request.args.get('exam_date', '')) or date.today()
@@ -2305,7 +2294,8 @@ def download_generated_attendance_summary():
 @admin_bp.route('/attendance')
 @login_required
 def view_attendance():
-    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+    log_current_user_permissions('view_attendance')
+    if not has_role('admin', 'hod'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     hall_filter    = request.args.get('hall', '')
@@ -2373,7 +2363,8 @@ def _attendance_report_data(hall_filter='', section_filter='', year_filter=None)
 @admin_bp.route('/attendance/download/<fmt>')
 @login_required
 def download_attendance_summary(fmt):
-    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+    log_current_user_permissions('download_attendance_summary')
+    if not has_role('admin', 'hod'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     if fmt not in ('excel', 'pdf'):
@@ -2511,10 +2502,8 @@ def _pdf_table(data, header_color):
 @admin_bp.route('/my-halls')
 @login_required
 def my_halls():
-    can_view_all = (
-        current_user.role in ('admin', 'hod', 'coordinator') or
-        current_user.secondary_role in ('hod', 'coordinator')
-    )
+    log_current_user_permissions('my_halls')
+    can_view_all = has_role('admin', 'hod', 'coordinator')
     if can_view_all:
         halls = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
     else:
@@ -2542,7 +2531,8 @@ def my_halls():
 @admin_bp.route('/absentees/subject-wise')
 @login_required
 def view_absentees_subject():
-    if not (current_user.role in ('admin', 'hod') or current_user.secondary_role == 'hod'):
+    log_current_user_permissions('view_absentees_subject')
+    if not has_role('admin', 'hod'):
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     cia_filter     = request.args.get('cia', type=int)

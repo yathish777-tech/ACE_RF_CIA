@@ -16,6 +16,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from flask_mail import Message
 
 from extensions import db   
+from utils.permissions import log_current_user_permissions
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -76,6 +77,7 @@ def login():
                 flash('Your account has been deactivated. Contact the admin.', 'danger')
                 return redirect(url_for('auth.login'))
             login_user(user, remember=remember)
+            log_current_user_permissions('login-success')
             next_page = request.args.get('next')
             return redirect(next_page or url_for('main.index'))
         else:

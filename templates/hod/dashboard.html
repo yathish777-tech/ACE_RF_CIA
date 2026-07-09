@@ -6,9 +6,7 @@
 {% block sidebar_nav %}
 <a href="{{ url_for('hod.dashboard') }}" class="nav-item active"><span class="nav-icon">🏠</span> Dashboard</a>
 <a href="{{ url_for('admin.attendance_summary') }}" class="nav-item"><span class="nav-icon">✅</span> Attendance Overview</a>
-{% if current_user.secondary_role == 'subject_staff' or current_user.role == 'subject_staff' %}
 <a href="{{ url_for('staff.dashboard') }}" class="nav-item"><span class="nav-icon">📚</span> Staff Dashboard</a>
-{% endif %}
 <hr style="border:none;border-top:1px solid var(--color-border-secondary);margin:10px 0;">
 <span class="nav-section-label">Download Applications</span>
 <a href="{{ url_for('hod.download_applications', fmt='excel') }}?year={{ year_filter or 1 }}" class="nav-item js-year-download" data-download-base="{{ url_for('hod.download_applications', fmt='excel') }}"><span class="nav-icon">📥</span> Excel</a>
