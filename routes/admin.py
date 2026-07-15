@@ -1543,10 +1543,8 @@ def _hall_student_rows(hall_number, allotments):
 # ─── SEATING ALLOTMENT ────────────────────────────────────────────────────────
 # --- HALLS AND GENERATED SEATING ------------------------------------------------
 YEAR_TEXT = {2: 'II Year', 3: 'III Year', 4: 'IV Year'}
-SEAT_POSITIONS = [1,2,3,4,5, 10,9,8,7,6, 11,12,13,14,15, 20,19,18,17,16]
-BENCH_SEATING_PATTERN = [1,10,11,20, 2,9,12,19, 3,8,13,18, 4,7,14,17, 5,6,15,16]
-ROW_MAP = {1:1,2:1,3:1,4:1,5:1,6:2,7:2,8:2,9:2,10:2,11:3,12:3,13:3,14:3,15:3,16:4,17:4,18:4,19:4,20:4}
-COL_MAP = {1:1,2:2,3:3,4:4,5:5,10:1,9:2,8:3,7:4,6:5,11:1,12:2,13:3,14:4,15:5,20:1,19:2,18:3,17:4,16:5}
+BENCH_ROWS = 5
+STUDENTS_PER_BENCH = 2
 
 
 def _cia_int(value):
@@ -1554,39 +1552,58 @@ def _cia_int(value):
     return int(text) if text in ('1', '2', '3') else None
 
 
-def _student_dicts(year):
+def _register_suffix(register_number):
+    """Return the final three-digit numeric value used for seat ordering."""
+    match = re.search(r'(\d{3})\D*$', str(register_number or ''))
+    return int(match.group(1)) if match else float('inf')
+
+
+def _allocation_students(selected_years):
+    """Fetch once and sort the selected years independently by register suffix."""
     students = User.query.filter(
         User.role == 'student',
-        User.year == year
-    ).order_by(User.register_number.asc()).all()
-    print(f'--- HALL ALLOCATION STUDENT LIST: YEAR {year} ---')
+        User.year.in_(selected_years),
+        User.register_number.isnot(None),
+    ).all()
+    by_year = {year: [] for year in selected_years}
     for student in students:
-        print(student.register_number)
-    print(f'--- END HALL ALLOCATION STUDENT LIST: YEAR {year} ({len(students)} students) ---')
-    return [
-        {'register_number': u.register_number, 'name': u.name, 'department': u.department or ''}
-        for u in students
-        if _normalize_register_number(u.register_number)
-    ]
+        if _normalize_register_number(student.register_number):
+            by_year[student.year].append({
+                'register_number': student.register_number, 'name': student.name,
+                'department': student.department or '',
+                'year': YEAR_TEXT.get(student.year, f'Year {student.year}'),
+            })
+    for year_students in by_year.values():
+        year_students.sort(key=lambda student: (_register_suffix(student['register_number']), student['register_number']))
+    return by_year
 
 
-def generate_seating(year_students, hall_id, hall_index, hall_count, cia_id, exam_date, generated_by):
+def _bench_slots(capacity):
+    """Five benches per column; every even column flows bottom-to-top."""
+    for bench_index in range(max(capacity or 0, 0) // STUDENTS_PER_BENCH):
+        column, row = divmod(bench_index, BENCH_ROWS)
+        yield bench_index + 1, row + 1, column + 1, row + 1 if column % 2 == 0 else BENCH_ROWS - row
+
+
+def generate_seating(year_students, hall, year_offsets, cia_id, exam_date, generated_by):
+    """Allocate sorted III/IV lists sequentially to the two-seat snake layout."""
     records = []
-    for bench_index, seat_number in enumerate(BENCH_SEATING_PATTERN):
-        for side, students, label_year, year_name in (
-            ('LEFT', year_students.get(4, []), 'IV Year', 'IV Year'),
-            ('MIDDLE', year_students.get(3, []), 'III Year', 'III Year'),
-            ('RIGHT', year_students.get(2, []), 'II Year', 'II Year'),
-        ):
-            student_index = (seat_number - 1) * hall_count + hall_index
-            s = students[student_index] if student_index < len(students) else None
+    for bench_position, row, column, display_row in _bench_slots(hall.capacity):
+        # The supplied reference image shows IV Year on the left, III Year right.
+        for year, side, label_year in ((4, 'LEFT', 'IV Year'), (3, 'RIGHT', 'III Year')):
+            student_index = year_offsets.get(year, 0)
+            student_list = year_students.get(year, [])
+            student = student_list[student_index] if student_index < len(student_list) else None
+            if student:
+                year_offsets[year] = student_index + 1
             records.append({
-                'hall_id': hall_id, 'cia_id': cia_id, 'bench_position': bench_index + 1,
-                'seat_side': side, 'seat_label': f'{label_year}-{seat_number}' if s else f'{label_year}-{seat_number} (VACANT)',
-                'student_reg_no': s['register_number'] if s else None,
-                'student_name': s['name'] if s else None,
-                'year': year_name, 'department': s['department'] if s else None,
-                'row_group': ROW_MAP[seat_number], 'col_number': COL_MAP[seat_number],
+                'hall_id': hall.id, 'cia_id': cia_id, 'bench_position': bench_position,
+                'seat_side': side, 'seat_label': f'{label_year}-{bench_position}' if student else f'{label_year}-{bench_position} (VACANT)',
+                'student_reg_no': student['register_number'] if student else None,
+                'student_name': student['name'] if student else None,
+                'year': student['year'] if student else label_year,
+                'department': student['department'] if student else None,
+                'row_group': display_row, 'col_number': column,
                 'exam_date': exam_date, 'generated_by': generated_by
             })
     return records
@@ -1598,10 +1615,19 @@ def _allocation_groups(cia_id=None, exam_date=None):
         query = query.filter(SeatingAllocation.cia_id == cia_id)
     if exam_date:
         query = query.filter(SeatingAllocation.exam_date == exam_date)
-    rows = query.order_by(Hall.id, SeatingAllocation.bench_position, SeatingAllocation.seat_side).all()
+    rows = query.order_by(Hall.id, SeatingAllocation.col_number, SeatingAllocation.row_group, SeatingAllocation.seat_side).all()
     groups = {}
     for row in rows:
         groups.setdefault(row.hall_id, {'hall': row.hall, 'rows': []})['rows'].append(row)
+    for group in groups.values():
+        seats = {}
+        max_column = max((row.col_number for row in group['rows']), default=0)
+        for row in group['rows']:
+            seats.setdefault(row.row_group, {}).setdefault(row.col_number, {})[row.seat_side] = row
+        group['matrix'] = [
+            {'row': row_number, 'columns': [seats.get(row_number, {}).get(column, {}) for column in range(1, max_column + 1)]}
+            for row_number in range(1, BENCH_ROWS + 1)
+        ]
     return list(groups.values())
 
 
@@ -1703,14 +1729,11 @@ def seating_allocation():
         if not auto_halls:
             flash('No auto-allocation halls available.', 'danger')
             return redirect(url_for('admin.seating_allocation'))
-        year_students = {
-            2: _student_dicts(2) if '2' in selected_years else [],
-            3: _student_dicts(3) if '3' in selected_years else [],
-            4: _student_dicts(4) if '4' in selected_years else [],
-        }
+        allocation_students = _allocation_students([int(year) for year in selected_years])
         SeatingAllocation.query.filter_by(cia_id=cia_id, exam_date=exam_date).delete()
-        for idx, hall in enumerate(auto_halls):
-            records = generate_seating(year_students, hall.id, idx, len(auto_halls), cia_id, exam_date, current_user.name)
+        year_offsets = {year: 0 for year in allocation_students}
+        for hall in auto_halls:
+            records = generate_seating(allocation_students, hall, year_offsets, cia_id, exam_date, current_user.name)
             db.session.add_all([SeatingAllocation(**r) for r in records])
         db.session.commit()
         flash('Seating allocation generated.', 'success')
@@ -1799,15 +1822,15 @@ def regenerate_seating():
 @admin_required
 def regenerate_single_hall(hall_id):
     cia_id = _cia_int(request.form.get('cia_id')); exam_date = _parse_date(request.form.get('exam_date', ''))
-    hall_ids = [h.id for h in Hall.query.filter_by(is_special=False).order_by(Hall.id).all()]
-    offset = hall_ids.index(hall_id) if hall_id in hall_ids else 0
+    halls = Hall.query.filter_by(is_special=False).order_by(Hall.id).all()
+    hall = next((candidate for candidate in halls if candidate.id == hall_id), None)
+    if not hall:
+        flash('Hall is not available for automatic allocation.', 'danger')
+        return redirect(url_for('admin.seating_allocation', cia_id=cia_id, exam_date=exam_date))
+    year_offsets = {year: sum(max(candidate.capacity or 0, 0) // STUDENTS_PER_BENCH for candidate in halls[:halls.index(hall)]) for year in (3, 4)}
     SeatingAllocation.query.filter_by(hall_id=hall_id, cia_id=cia_id, exam_date=exam_date).delete()
-    year_students = {
-        2: _student_dicts(2),
-        3: _student_dicts(3),
-        4: _student_dicts(4),
-    }
-    records = generate_seating(year_students, hall_id, offset, len(hall_ids), cia_id, exam_date, current_user.name)
+    allocation_students = _allocation_students([2, 3, 4])
+    records = generate_seating(allocation_students, hall, year_offsets, cia_id, exam_date, current_user.name)
     db.session.add_all([SeatingAllocation(**r) for r in records]); db.session.commit()
     flash('Single hall regenerated.', 'success')
     return redirect(url_for('admin.seating_allocation', cia_id=cia_id, exam_date=exam_date))
@@ -1852,14 +1875,29 @@ def download_seating_allocation(fmt):
         els.append(Paragraph('No seating allocation found for the selected CIA/date.', styles['Normal']))
     for idx, group in enumerate(groups):
         if idx: els.append(PageBreak())
+        selected_years = ', '.join(sorted({row.year for row in group['rows'] if row.student_reg_no})) or '-'
         els += [Paragraph('Adhiyamaan College of Engineering', styles['Title']),
                 Paragraph(f"CIA {cia_id} Seating Allocation - {exam_date.strftime('%d-%m-%Y')}", styles['Heading2']),
-                Paragraph(f"Hall: {group['hall'].hall_name} | Block: {group['hall'].block or '-'} | Floor: {group['hall'].floor or '-'}", styles['Normal']), Spacer(1, 10)]
-        data = [['Bench Pos', 'Seat Label', 'Reg No', 'Name', 'Year', 'Department']] + [
-            [r.bench_position, r.seat_label, r.student_reg_no or 'VACANT', r.student_name or 'VACANT', r.year or '-', r.department or '-']
-            for r in group['rows']]
-        table = Table(data, repeatRows=1)
-        table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#1A237E')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),0.4,colors.grey),('FONTSIZE',(0,0),(-1,-1),8)]))
+                Paragraph(f"Hall: {group['hall'].hall_name or group['hall'].hall_number} | Capacity: {group['hall'].capacity} | Years: {selected_years}", styles['Normal']),
+                Paragraph(f"Block: {group['hall'].block or '-'} | Floor: {group['hall'].floor or '-'}", styles['Normal']), Spacer(1, 10)]
+        columns = len(group['matrix'][0]['columns']) if group['matrix'] else 0
+        data = [[f'{column} ROW' for column in range(1, columns + 1) for _ in range(2)]]
+        for matrix_row in group['matrix']:
+            data.append([
+                register
+                for seats in matrix_row['columns']
+                for register in (
+                    seats.get('LEFT').student_reg_no if seats.get('LEFT') and seats.get('LEFT').student_reg_no else 'VACANT',
+                    seats.get('RIGHT').student_reg_no if seats.get('RIGHT') and seats.get('RIGHT').student_reg_no else 'VACANT',
+                )
+            ])
+        table = Table(data, repeatRows=1, colWidths=[88] * (columns * 2))
+        style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#D6D6D6')), ('TEXTCOLOR',(0,0),(-1,0),colors.black),
+                 ('GRID',(0,0),(-1,-1),0.7,colors.black), ('ALIGN',(0,0),(-1,-1),'CENTER'),
+                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),8)]
+        for column in range(columns):
+            style += [('SPAN', (column * 2, 0), (column * 2 + 1, 0)), ('TEXTCOLOR', (column * 2, 1), (column * 2, -1), colors.HexColor('#B71C1C')), ('TEXTCOLOR', (column * 2 + 1, 1), (column * 2 + 1, -1), colors.HexColor('#137A1B'))]
+        table.setStyle(TableStyle(style))
         els += [table, Spacer(1, 10), Paragraph(f'Generated by {current_user.name} on {datetime.now().strftime("%d %b %Y %H:%M")}', styles['Normal'])]
     doc.build(els); buf.seek(0)
     return send_file(buf, as_attachment=True, download_name='seating_allocation.pdf', mimetype='application/pdf')

@@ -13,6 +13,13 @@
 {% endblock %}
 {% block content %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<style>
+  .hall-layout { border-collapse: collapse; width: 100%; min-width: 760px; text-align: center; font-weight: 700; }
+  .hall-layout th, .hall-layout td { border: 1px solid #333; padding: 11px 8px; }
+  .hall-layout th { background: #d6d6d6; color: #111; font-size: 16px; }
+  .hall-layout .iv-seat { color: #bc1616; } .hall-layout .iii-seat { color: #16851b; }
+  .hall-layout .vacant { color: #777; font-weight: 600; }
+</style>
 <div class="page-header">
   <div><h2>Seating Allocation</h2><p>Generate the ACE 4x5 snake-pattern seating plan.</p></div>
   {% if selected_cia and selected_date %}
@@ -65,6 +72,19 @@
       <input type="hidden" name="cia_id" value="{{ selected_cia }}"><input type="hidden" name="exam_date" value="{{ selected_date }}">
       <button class="btn btn-outline btn-sm">Regenerate Single Hall</button>
     </form>
+  </div>
+  <div class="table-wrapper" style="padding:16px 0;">
+    <table class="hall-layout">
+      <thead><tr>{% for column in group.matrix[0].columns %}<th colspan="2">{{ loop.index }}{% if loop.index == 1 %}st{% elif loop.index == 2 %}nd{% elif loop.index == 3 %}rd{% else %}th{% endif %} ROW</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for matrix_row in group.matrix %}<tr>
+        {% for seats in matrix_row.columns %}
+          <td class="iv-seat">{{ seats.get('LEFT').student_reg_no if seats.get('LEFT') and seats.get('LEFT').student_reg_no else 'VACANT' }}</td>
+          <td class="iii-seat">{{ seats.get('RIGHT').student_reg_no if seats.get('RIGHT') and seats.get('RIGHT').student_reg_no else 'VACANT' }}</td>
+        {% endfor %}
+      </tr>{% endfor %}
+      </tbody>
+    </table>
   </div>
   <div class="table-wrapper">
     <table class="allocation-table">
