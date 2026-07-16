@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 from flask import Flask
 from sqlalchemy import inspect, text
 from flask_sqlalchemy import SQLAlchemy
@@ -12,6 +13,11 @@ from extensions import db, login_manager, mail
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+        # 👇 Add these lines here
+    print(app.config.get("CLOUDINARY_CLOUD_NAME"))
+    print(app.config.get("CLOUDINARY_API_KEY"))
+    print(app.config.get("CLOUDINARY_API_SECRET"))
+
 
     # ── Init extensions ───────────────────────────────────────────────────
     db.init_app(app)
@@ -64,10 +70,6 @@ def create_app(config_class=Config):
     app.register_blueprint(coordinator_bp, url_prefix='/coordinator')
 
     # ── Ensure upload folder exists ───────────────────────────────────────
-    upload_folder = os.path.join(app.root_path, 'uploads')
-    os.makedirs(upload_folder, exist_ok=True)
-    app.config.setdefault('UPLOAD_FOLDER', upload_folder)
-
     # ── Auto-create DB tables on first run ────────────────────────────────
     with app.app_context():
         db.create_all()
@@ -140,7 +142,16 @@ def _ensure_runtime_columns():
     if alter_statements:
         db.session.commit()
 
+#cloudinary configuration
+import cloudinary
+load_dotenv()
 
+cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+api_key = os.getenv("CLOUDINARY_API_KEY")
+api_secret = os.getenv("CLOUDINARY_API_SECRET")
+
+print(cloud_name)
+print(api_key)
 # ── Module-level app (used by email_utils lazy import) ────────────────────────
 app = create_app()
 

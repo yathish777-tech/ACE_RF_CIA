@@ -21,3 +21,8 @@ class Config:
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME',  'aceciaretest@gmail.com')
     # ↑↑ THIS WAS THE MISSING LINE — Flask-Mail requires MAIL_DEFAULT_SENDER
     # to match MAIL_USERNAME for Gmail. Without it OTP emails silently fail.
+
+   
+    CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+    CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+    CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")

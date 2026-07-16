@@ -1,6 +1,7 @@
-import os, uuid, re
+import uuid, re
+import cloudinary.uploader
 from flask import (Blueprint, render_template, redirect, url_for,
-                   flash, request, current_app, jsonify, send_from_directory, abort)
+                   flash, request, current_app, jsonify)
 from flask_login import login_required, current_user
 from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection, AbsenceRecord, HallAttendance
 from datetime import datetime, date
@@ -406,11 +407,21 @@ def apply():
                 errors['attachment'] = f'Invalid file type. Allowed: {", ".join(ALLOWED)}'
 
         if not errors:
-            semester       = int(form['semester'])
+            semester = int(form['semester'])
             submitted_year = SEMESTER_TO_YEAR.get(semester, None)
-            ext            = file.filename.split('.')[-1]
-            filename       = f"{uuid.uuid4().hex}.{ext}"
-            file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
+
+# Upload file to Cloudinary
+            result = cloudinary.uploader.upload(
+            file,
+            folder="ace_rf_cia_documents",
+            resource_type="auto"  # supports pdf, jpg, png, etc.
+            )
+
+# Get the secure URL returned by Cloudinary
+            file_url = result["secure_url"]
+ 
+# Optional: keep the original filename
+            filename = file.filename
 
             application = RetestApplication(
                 student_id          = current_user.id,
@@ -426,7 +437,7 @@ def apply():
                 reason_type         = form['reason_type'],
                 reason_detail       = form.get('reason_detail', ''),
                 submission_type     = form['submission_type'],
-                attachment_filename = filename,
+                attachment_filename = file_url,
                 student_section     = form.get('student_section') or student_section,
                 student_year        = submitted_year,
                 submitted_at        = datetime.utcnow()
@@ -461,47 +472,3 @@ def view_application(app_id):
     return render_template('user/view_application.html', app=app)
 
 
-# =========================
-# VIEW FILE
-# =========================
-@user_bp.route('/attachment/<int:app_id>')
-@login_required
-def view_attachment(app_id):
-
-    application = RetestApplication.query.get_or_404(app_id)
-
-    allowed = (
-        application.student_id == current_user.id
-        or has_role('admin')
-        or has_role('hod')
-        or (has_role('subject_staff')
-            and application.staff_id == current_user.id)
-        or (has_role('tutor')
-            and (
-                application.tutor_id == current_user.id or
-                (
-                    getattr(current_user, 'handling_year', None) == application.student_year and
-                    (getattr(current_user, 'handling_section', '') or '').upper() == (application.student_section or '').upper()
-                )
-            ))
-        or (has_role('coordinator')
-            and application.submission_type == 'late')
-    )
-
-    if not allowed:
-        abort(403)
-
-    filename = os.path.basename(application.attachment_filename or '')
-    if not filename:
-        abort(404)
-
-    upload_folder = current_app.config['UPLOAD_FOLDER']
-    file_path = os.path.join(upload_folder, filename)
-    if not os.path.exists(file_path):
-        abort(404)
-
-    return send_from_directory(
-        upload_folder,
-        filename,
-        as_attachment=False
-    )

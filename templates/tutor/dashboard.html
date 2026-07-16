@@ -126,7 +126,7 @@
           <td style="font-size:12px;">{{ app.reason_type.replace('_',' ').title() }}</td>
           <td>{{ type_badge(app.submission_type) }}</td>
           <td>{{ status_badge(app.staff_status) }}<div style="font-size:10px;color:#6b7280;margin-top:2px;">{{ app.staff.name if app.staff else '—' }}</div></td>
-          <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎 View</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if app.attachment_filename %}<a href="{{ app.attachment_filename }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">📎 View</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td><button onclick="openActionModal({{ app.id }}, '{{ app.student_name }}', '{{ app.submission_type }}')" class="btn btn-primary btn-sm">Review</button></td>
         </tr>
         {% endfor %}

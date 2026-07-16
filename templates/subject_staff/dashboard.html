@@ -138,7 +138,7 @@
           <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
           <td style="font-size:12px;">{{ app.cia_date.strftime('%d %b %Y') }}</td>
           <td style="font-size:12px;">{{ app.reason_type.replace('_',' ').title() }}</td>
-          <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎 View</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if app.attachment_filename %}<a href="{{ app.attachment_filename }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">📎 View</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{{ type_badge(app.submission_type) }}</td>
           <td><button onclick="openActionModal({{ app.id }},'{{ app.student_name }}')" class="btn btn-primary btn-sm">Review</button></td>
         </tr>
@@ -166,7 +166,7 @@
           <td>{{ app.subject.subject_name }}</td>
           <td><span class="badge badge-primary">CIA {{ app.cia_number }}</span></td>
           <td>{{ type_badge(app.submission_type) }}</td>
-          <td>{% if app.attachment_filename %}<a href="{{ url_for('user.view_attachment', app_id=app.id) }}" class="btn btn-outline btn-sm">📎</a>{% else %}—{% endif %}</td>
+          <td>{% if app.attachment_filename %}<a href="{{ app.attachment_filename }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">📎</a>{% else %}—{% endif %}</td>
           <td>{{ status_badge(app.staff_status) }}</td>
           <td>
             {% if app.staff_status == 'rejected' and app.final_status == 'rejected' %}
