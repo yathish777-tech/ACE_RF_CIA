@@ -417,6 +417,7 @@ class Hall(db.Model):
     block       = db.Column(db.String(50), nullable=True)
     floor       = db.Column(db.String(20), nullable=True)
     capacity    = db.Column(db.Integer, default=40)
+    bench_rows  = db.Column(db.Integer, default=5, nullable=False)
     is_special  = db.Column(db.Boolean, default=False, nullable=False)
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
 

@@ -23,7 +23,7 @@
         <div class="form-group"><label class="form-label">.xlsx file</label><input type="file" name="hall_file" class="form-control" accept=".xlsx" required></div>
         <button class="btn btn-primary w-100">Upload Halls</button>
       </form>
-      <p class="text-muted" style="font-size:12px;margin-top:10px;">Columns: Hall Name | Hall Number | Block | Floor | Capacity</p>
+      <p class="text-muted" style="font-size:12px;margin-top:10px;">Columns: Hall Name | Hall Number | Block | Floor | Capacity | Rows</p>
     </div>
   </div>
   <div class="card">
@@ -38,6 +38,7 @@
           <div class="form-group"><label class="form-label">Block</label><input name="block" id="hallBlock" class="form-control"></div>
           <div class="form-group"><label class="form-label">Floor</label><input name="floor" id="hallFloor" class="form-control"></div>
           <div class="form-group"><label class="form-label">Capacity</label><input type="number" name="capacity" id="hallCapacity" class="form-control" value="40" min="1"></div>
+          <div class="form-group"><label class="form-label">Rows</label><input type="number" name="bench_rows" id="hallBenchRows" class="form-control" value="5" min="1"></div>
           <label style="display:flex;align-items:center;gap:8px;margin-top:28px;"><input type="checkbox" name="is_special" id="isSpecial"> Special Hall?</label>
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end;"><button type="button" class="btn btn-outline" onclick="resetHallForm()">Clear</button><button class="btn btn-primary">Add Hall</button></div>
@@ -50,19 +51,19 @@
   <div class="card-header"><h3>All Halls</h3></div>
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>Hall Name</th><th>Hall Number</th><th>Block</th><th>Floor</th><th>Capacity</th><th>Special Hall?</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Hall Name</th><th>Hall Number</th><th>Block</th><th>Floor</th><th>Capacity</th><th>Rows</th><th>Special Hall?</th><th>Actions</th></tr></thead>
       <tbody>
       {% for h in halls %}
         <tr>
-          <td>{{ h.hall_name }}</td><td>{{ h.hall_number }}</td><td>{{ h.block or '-' }}</td><td>{{ h.floor or '-' }}</td><td>{{ h.capacity }}</td>
+          <td>{{ h.hall_name }}</td><td>{{ h.hall_number }}</td><td>{{ h.block or '-' }}</td><td>{{ h.floor or '-' }}</td><td>{{ h.capacity }}</td><td>{{ h.bench_rows }}</td>
           <td>{% if h.is_special %}<span class="badge badge-warning">Yes</span>{% else %}<span class="badge badge-success">No</span>{% endif %}</td>
           <td style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-outline btn-sm" type="button" data-hall='{{ {"id":h.id,"hall_name":h.hall_name,"hall_number":h.hall_number,"block":h.block,"floor":h.floor,"capacity":h.capacity,"is_special":h.is_special}|tojson }}' onclick="editHall(this)">Edit</button>
+            <button class="btn btn-outline btn-sm" type="button" data-hall='{{ {"id":h.id,"hall_name":h.hall_name,"hall_number":h.hall_number,"block":h.block,"floor":h.floor,"capacity":h.capacity,"bench_rows":h.bench_rows,"is_special":h.is_special}|tojson }}' onclick="editHall(this)">Edit</button>
             <form method="POST" action="{{ url_for('admin.delete_hall', hall_id=h.id) }}" onsubmit="return confirm('Delete this hall?');"><button class="btn btn-danger btn-sm">Delete</button></form>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="7" class="text-muted" style="text-align:center;padding:24px;">No halls added yet.</td></tr>
+        <tr><td colspan="8" class="text-muted" style="text-align:center;padding:24px;">No halls added yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -74,6 +75,6 @@
 const numberInput = document.getElementById('hallNumber');
 numberInput.addEventListener('input', () => { if (numberInput.value.trim() === '340') document.getElementById('isSpecial').checked = true; });
 function resetHallForm(){document.getElementById('hallForm').reset();document.getElementById('hallId').value='';document.querySelector('[name=action]').value='add';document.getElementById('hallFormTitle').textContent='Add Hall';}
-function editHall(btn){const h=JSON.parse(btn.dataset.hall);document.querySelector('[name=action]').value='update';document.getElementById('hallFormTitle').textContent='Edit Hall';document.getElementById('hallId').value=h.id;document.getElementById('hallName').value=h.hall_name||'';document.getElementById('hallNumber').value=h.hall_number||'';document.getElementById('hallBlock').value=h.block||'';document.getElementById('hallFloor').value=h.floor||'';document.getElementById('hallCapacity').value=h.capacity||40;document.getElementById('isSpecial').checked=!!h.is_special;window.scrollTo({top:0,behavior:'smooth'});}
+function editHall(btn){const h=JSON.parse(btn.dataset.hall);document.querySelector('[name=action]').value='update';document.getElementById('hallFormTitle').textContent='Edit Hall';document.getElementById('hallId').value=h.id;document.getElementById('hallName').value=h.hall_name||'';document.getElementById('hallNumber').value=h.hall_number||'';document.getElementById('hallBlock').value=h.block||'';document.getElementById('hallFloor').value=h.floor||'';document.getElementById('hallCapacity').value=h.capacity||40;document.getElementById('hallBenchRows').value=h.bench_rows||5;document.getElementById('isSpecial').checked=!!h.is_special;window.scrollTo({top:0,behavior:'smooth'});}
 </script>
 {% endblock %}

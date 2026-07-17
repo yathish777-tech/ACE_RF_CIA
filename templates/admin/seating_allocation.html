@@ -14,14 +14,30 @@
 {% block content %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <style>
-  .hall-layout { border-collapse: collapse; width: 100%; min-width: 760px; text-align: center; font-weight: 700; }
-  .hall-layout th, .hall-layout td { border: 1px solid #333; padding: 11px 8px; }
-  .hall-layout th { background: #d6d6d6; color: #111; font-size: 16px; }
+  /* Prevent page-level horizontal scroll */
+  body, .main-content, .page-content { overflow-x: hidden; }
+  /* Dedicated scroll container for the seating grid */
+  .seating-scroll-container {
+    overflow-x: auto;
+    overflow-y: visible;
+    max-width: 100%;
+    padding: 16px 0;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+  }
+  .hall-layout { border-collapse: collapse; width: max-content; min-width: 100%; text-align: center; font-weight: 700; }
+  .hall-layout th, .hall-layout td { border: 1px solid #333; padding: 11px 8px; white-space: nowrap; }
+  .hall-layout th { background: #d6d6d6; color: #111; font-size: 15px; position: sticky; top: 0; z-index: 2; }
   .hall-layout .seat-1 { color: #bc1616; } .hall-layout .seat-2 { color: #16851b; } .hall-layout .seat-3 { color: #1565c0; }
   .hall-layout .vacant { color: #777; font-weight: 600; }
+  .seat-reg { font-weight: 700; font-size: 13px; }
+  .seat-name { font-weight: 500; font-size: 11px; color: #555; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+  .seat-year { font-weight: 600; font-size: 10px; color: #888; margin-top: 1px; }
 </style>
 <div class="page-header">
-  <div><h2>Seating Allocation</h2><p>Generate a dynamic 4-row seating plan.</p></div>
+  <div><h2>Seating Allocation</h2><p>Generate a dynamic seating plan based on hall configuration.</p></div>
   {% if selected_cia and selected_date %}
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <a class="btn btn-outline" href="{{ url_for('admin.download_seating_allocation', fmt='excel', cia_id=selected_cia, exam_date=selected_date) }}">Excel</a>
@@ -67,13 +83,13 @@
       <button class="btn btn-outline btn-sm">Regenerate Single Hall</button>
     </form>
   </div>
-  <div class="table-wrapper" style="padding:16px 0;">
+  <div class="seating-scroll-container">
     <table class="hall-layout">
-      <thead><tr>{% for column in group.matrix[0].columns %}<th colspan="3">{{ loop.index }}{% if loop.index == 1 %}st{% elif loop.index == 2 %}nd{% elif loop.index == 3 %}rd{% else %}th{% endif %} ROW</th>{% endfor %}</tr></thead>
+      <thead><tr>{% for column in group.matrix[0].columns %}<th colspan="3">Column {{ loop.index }}</th>{% endfor %}</tr></thead>
       <tbody>
       {% for matrix_row in group.matrix %}<tr>
         {% for seats in matrix_row.columns %}
-          {% for seat_side in ('SEAT_1', 'SEAT_2', 'SEAT_3') %}{% set seat = seats.get(seat_side) %}<td class="seat-{{ loop.index }}">{{ seat.student_reg_no if seat and seat.student_reg_no else 'VACANT' }}</td>{% endfor %}
+          {% for seat_side in ('SEAT_1', 'SEAT_2', 'SEAT_3') %}{% set seat = seats.get(seat_side) %}<td class="seat-{{ loop.index }}">{% if seat and seat.student_reg_no %}<div class="seat-reg">{{ seat.student_reg_no }}</div><div class="seat-name">{{ seat.student_name or '' }}</div><div class="seat-year">{{ seat.year or '' }}</div>{% else %}<span class="vacant">VACANT</span>{% endif %}</td>{% endfor %}
         {% endfor %}
       </tr>{% endfor %}
       </tbody>

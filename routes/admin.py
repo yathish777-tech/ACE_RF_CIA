@@ -1543,7 +1543,7 @@ def _hall_student_rows(hall_number, allotments):
 # ─── SEATING ALLOTMENT ────────────────────────────────────────────────────────
 # --- HALLS AND GENERATED SEATING ------------------------------------------------
 YEAR_TEXT = {2: 'II Year', 3: 'III Year', 4: 'IV Year'}
-BENCH_ROWS = 4
+DEFAULT_BENCH_ROWS = 5
 STUDENTS_PER_BENCH = 3
 SEAT_SIDES = ('SEAT_1', 'SEAT_2', 'SEAT_3')
 
@@ -1580,14 +1580,18 @@ def _allocation_students(selected_years, selected_student_ids):
     return by_year
 
 
-def _bench_slots(capacity):
-    """Four rows, three seats per position; columns are derived from hall capacity."""
+def _bench_slots(capacity, bench_rows):
+    """Rows are fixed to the hall's configured bench_rows; columns expand as needed."""
     import math
-    # Capacity is stored as a student count.  A partially filled final position
-    # would exceed it, so use only complete three-seat positions.
-    for bench_index in range(max(capacity or 0, 0) // STUDENTS_PER_BENCH):
-        column, row = divmod(bench_index, BENCH_ROWS)
-        yield bench_index + 1, row + 1, column + 1
+    total_benches = max(capacity or 0, 0) // STUDENTS_PER_BENCH
+    num_columns = math.ceil(total_benches / bench_rows) if bench_rows else 0
+    bench_position = 0
+    for column in range(1, num_columns + 1):
+        for row in range(1, bench_rows + 1):
+            bench_position += 1
+            if bench_position > total_benches:
+                return
+            yield bench_position, row, column
 
 
 def _next_student(year_students, year_offsets, preferred_year):
@@ -1603,23 +1607,57 @@ def _next_student(year_students, year_offsets, preferred_year):
 
 
 def generate_seating(year_students, hall, year_offsets, cia_id, exam_date, generated_by):
-    """Allocate the repeating 4/3/4 and 3/4/3 pattern over dynamic hall columns."""
+    """Allocate the repeating 4/3/4 and 3/4/3 pattern over dynamic hall columns.
+
+    Filling order per column:
+      1. SEAT_1 (left)  — all rows top to bottom
+      2. SEAT_3 (right) — all rows top to bottom
+    Then move to the next column.  SEAT_2 (middle) is filled after the left
+    and right passes of the same column.
+    """
+    import math
+    bench_rows = getattr(hall, 'bench_rows', None) or DEFAULT_BENCH_ROWS
+    total_benches = max(hall.capacity or 0, 0) // STUDENTS_PER_BENCH
+    num_columns = math.ceil(total_benches / bench_rows) if bench_rows else 0
+
+    # Pre-build the grid of bench positions so we know which (row, col) slots
+    # exist. bench_position is 1-indexed and assigned column-major.
+    grid = {}  # (row, column) -> bench_position
+    bp = 0
+    for col in range(1, num_columns + 1):
+        for row in range(1, bench_rows + 1):
+            bp += 1
+            if bp > total_benches:
+                break
+            grid[(row, col)] = bp
+
     records = []
-    for bench_position, row, column in _bench_slots(hall.capacity):
-        preferred_years = (4, 3, 4) if row in (1, 3) else (3, 4, 3)
-        for seat_number, preferred_year in enumerate(preferred_years, start=1):
-            student = _next_student(year_students, year_offsets, preferred_year)
+    # Seat filling order within each column: SEAT_1, SEAT_3, then SEAT_2
+    seat_order = (1, 3, 2)
+    for col in range(1, num_columns + 1):
+        preferred_years = (4, 3, 4) if col % 2 == 1 else (3, 4, 3)
+        for seat_number in seat_order:
+            preferred_year = preferred_years[seat_number - 1]
             label_year = YEAR_TEXT[preferred_year]
-            records.append({
-                'hall_id': hall.id, 'cia_id': cia_id, 'bench_position': bench_position,
-                'seat_side': f'SEAT_{seat_number}', 'seat_label': f'{label_year}-{bench_position}-{seat_number}' if student else f'{label_year}-{bench_position}-{seat_number} (VACANT)',
-                'student_reg_no': student['register_number'] if student else None,
-                'student_name': student['name'] if student else None,
-                'year': student['year'] if student else label_year,
-                'department': student['department'] if student else None,
-                'row_group': row, 'col_number': column,
-                'exam_date': exam_date, 'generated_by': generated_by
-            })
+            for row in range(1, bench_rows + 1):
+                bench_position = grid.get((row, col))
+                if bench_position is None:
+                    continue
+                student = _next_student(year_students, year_offsets, preferred_year)
+                records.append({
+                    'hall_id': hall.id, 'cia_id': cia_id,
+                    'bench_position': bench_position,
+                    'seat_side': f'SEAT_{seat_number}',
+                    'seat_label': (f'{label_year}-{bench_position}-{seat_number}'
+                                   if student else
+                                   f'{label_year}-{bench_position}-{seat_number} (VACANT)'),
+                    'student_reg_no': student['register_number'] if student else None,
+                    'student_name': student['name'] if student else None,
+                    'year': student['year'] if student else label_year,
+                    'department': student['department'] if student else None,
+                    'row_group': row, 'col_number': col,
+                    'exam_date': exam_date, 'generated_by': generated_by,
+                })
     return records
 
 def _allocation_groups(cia_id=None, exam_date=None):
@@ -1635,11 +1673,12 @@ def _allocation_groups(cia_id=None, exam_date=None):
     for group in groups.values():
         seats = {}
         max_column = max((row.col_number for row in group['rows']), default=0)
+        hall_rows = getattr(group['hall'], 'bench_rows', None) or DEFAULT_BENCH_ROWS
         for row in group['rows']:
             seats.setdefault(row.row_group, {}).setdefault(row.col_number, {})[row.seat_side] = row
         group['matrix'] = [
             {'row': row_number, 'columns': [seats.get(row_number, {}).get(column, {}) for column in range(1, max_column + 1)]}
-            for row_number in range(1, BENCH_ROWS + 1)
+            for row_number in range(1, hall_rows + 1)
         ]
     return list(groups.values())
 
@@ -1685,6 +1724,7 @@ def manage_halls():
                         'block': _row_value(row, 'block'),
                         'floor': _row_value(row, 'floor'),
                         'capacity': int(float(_row_value(row, 'capacity') or 40)),
+                        'bench_rows': int(float(_row_value(row, 'bench_rows') or _row_value(row, 'rows') or 5)),
                         'is_special': hall_number == '340'
                     }
                     hall = Hall.query.filter_by(hall_number=hall_number).first()
@@ -1707,6 +1747,7 @@ def manage_halls():
                     'block': _clean_cell(request.form.get('block')),
                     'floor': _clean_cell(request.form.get('floor')),
                     'capacity': max(request.form.get('capacity', type=int) or 40, 1),
+                    'bench_rows': max(request.form.get('bench_rows', type=int) or 5, 1),
                     'is_special': bool(request.form.get('is_special')) or hall_number == '340'
                 }
                 hall = Hall.query.get(hall_id) if hall_id else None
@@ -1941,22 +1982,32 @@ def download_seating_allocation(fmt):
                 Paragraph(f"Hall: {group['hall'].hall_name or group['hall'].hall_number} | Capacity: {group['hall'].capacity} | Years: {selected_years}", styles['Normal']),
                 Paragraph(f"Block: {group['hall'].block or '-'} | Floor: {group['hall'].floor or '-'}", styles['Normal']), Spacer(1, 10)]
         columns = len(group['matrix'][0]['columns']) if group['matrix'] else 0
-        data = [[f'{column} ROW' for column in range(1, columns + 1) for _ in range(2)]]
+        # Three sub-columns per column: SEAT_1, SEAT_2, SEAT_3
+        sub_cols = 3
+        data = [[f'Column {col}' for col in range(1, columns + 1) for _ in range(sub_cols)]]
         for matrix_row in group['matrix']:
-            data.append([
-                register
-                for seats in matrix_row['columns']
-                for register in (
-                    seats.get('LEFT').student_reg_no if seats.get('LEFT') and seats.get('LEFT').student_reg_no else 'VACANT',
-                    seats.get('RIGHT').student_reg_no if seats.get('RIGHT') and seats.get('RIGHT').student_reg_no else 'VACANT',
-                )
-            ])
-        table = Table(data, repeatRows=1, colWidths=[88] * (columns * 2))
+            row_data = []
+            for seats in matrix_row['columns']:
+                for seat_key in ('SEAT_1', 'SEAT_2', 'SEAT_3'):
+                    seat = seats.get(seat_key)
+                    if seat and seat.student_reg_no:
+                        cell = f"{seat.student_reg_no}\n{seat.student_name or ''}\n{seat.year or ''}"
+                    else:
+                        cell = 'VACANT'
+                    row_data.append(cell)
+            data.append(row_data)
+        table = Table(data, repeatRows=1, colWidths=[75] * (columns * sub_cols))
         style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#D6D6D6')), ('TEXTCOLOR',(0,0),(-1,0),colors.black),
                  ('GRID',(0,0),(-1,-1),0.7,colors.black), ('ALIGN',(0,0),(-1,-1),'CENTER'),
-                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),8)]
-        for column in range(columns):
-            style += [('SPAN', (column * 2, 0), (column * 2 + 1, 0)), ('TEXTCOLOR', (column * 2, 1), (column * 2, -1), colors.HexColor('#B71C1C')), ('TEXTCOLOR', (column * 2 + 1, 1), (column * 2 + 1, -1), colors.HexColor('#137A1B'))]
+                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),7)]
+        for col in range(columns):
+            base = col * sub_cols
+            style += [
+                ('SPAN', (base, 0), (base + sub_cols - 1, 0)),
+                ('TEXTCOLOR', (base, 1), (base, -1), colors.HexColor('#B71C1C')),
+                ('TEXTCOLOR', (base + 1, 1), (base + 1, -1), colors.HexColor('#16851B')),
+                ('TEXTCOLOR', (base + 2, 1), (base + 2, -1), colors.HexColor('#1565C0')),
+            ]
         table.setStyle(TableStyle(style))
         els += [table, Spacer(1, 10), Paragraph(f'Generated by {current_user.name} on {datetime.now().strftime("%d %b %Y %H:%M")}', styles['Normal'])]
     doc.build(els); buf.seek(0)

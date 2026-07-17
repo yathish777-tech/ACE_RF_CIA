@@ -98,6 +98,7 @@ def _ensure_runtime_columns():
             'block': 'VARCHAR(50) NULL',
             'floor': 'VARCHAR(20) NULL',
             'capacity': 'INTEGER NULL',
+            'bench_rows': 'INTEGER NOT NULL DEFAULT 5',
             'is_special': 'BOOLEAN NOT NULL DEFAULT 0',
             'created_at': 'DATETIME NULL',
         }
