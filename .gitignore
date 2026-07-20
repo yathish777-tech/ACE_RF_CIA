@@ -1,0 +1,39 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.env
+backend/data/faiss_index.pkl
+backend/data/documents.json
+.venv/
+
+venv/
+__pycache__/
+*.pyc
+.env
+
+
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
