@@ -7,10 +7,15 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'cia-retest-secret-key-2024')
 
     # ── MySQL ──────────────────────────────────────────────────────────────
+<<<<<<< HEAD
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL','mysql+pymysql://root:12345@localhost/cia_rf_1')
+=======
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL','mysql+pymysql://root:acecse@localhost/cia_rf_1')
+>>>>>>> 97305f9825985f1f7603cf9af7bf80690728dfdb
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # ── Gmail SMTP (SSL port 465) ──────────────────────────────────────────
+    
     # The key fix: MAIL_DEFAULT_SENDER must match MAIL_USERNAME
     MAIL_SERVER         = 'smtp.gmail.com'
     MAIL_PORT           = 465
