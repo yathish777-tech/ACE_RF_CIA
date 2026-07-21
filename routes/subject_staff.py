@@ -2,7 +2,7 @@ import os, uuid
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, current_app, jsonify, send_file)
 from flask_login import login_required, current_user
-from models import db, RetestApplication, AbsenceRecord, Subject, User, Hall, SeatingAllocation, HallAttendance, SeatingAllotment, ExamAttendance, CIADate
+from models import db, RetestApplication, AbsenceRecord, Subject, User, Hall, SeatingAllocation, HallAttendance, SeatingAllotment, ExamAttendance, CIADate, StaffAssignment
 from datetime import datetime
 from functools import wraps
 import io
@@ -60,6 +60,20 @@ def _registered_student_map():
 
 def _display_attendance_status(status):
     return 'Absent' if str(status or '').lower() == 'absent' else 'Present'
+
+
+def _assigned_subject_ids(staff_id):
+    ids = {
+        row.subject_id for row in StaffAssignment.query.filter_by(staff_id=staff_id).all()
+    }
+    if not ids:
+        ids.update(s.id for s in Subject.query.filter_by(
+            staff_id=staff_id, is_active=True).all())
+    return ids
+
+
+def _staff_can_access_subject(staff_id, subject_id):
+    return int(subject_id) in _assigned_subject_ids(staff_id)
 
 
 def _student_payload(register_number):
@@ -164,9 +178,11 @@ def dashboard():
         RetestApplication.staff_status.in_(['approved','rejected'])
     ).all()
 
-    my_subjects = Subject.query.filter_by(
-        staff_id=current_user.id, is_active=True
-    ).all()
+    subject_ids = _assigned_subject_ids(current_user.id)
+    my_subjects = Subject.query.filter(
+        Subject.id.in_(subject_ids),
+        Subject.is_active == True
+    ).all() if subject_ids else []
 
     absence_records = AbsenceRecord.query.filter_by(
         uploaded_by=current_user.id
@@ -507,6 +523,9 @@ def save_hall_attendance():
 @staff_required
 def action(app_id):
     application = RetestApplication.query.get_or_404(app_id)
+    if application.staff_id != current_user.id:
+        flash('You are not assigned to this application.', 'danger')
+        return redirect(url_for('staff.dashboard'))
 
     act = request.form.get('action')
     remark = request.form.get('remark','')
@@ -539,6 +558,9 @@ def upload_absentees():
 
     if not subject_id or not cia_number:
         flash('Subject and CIA number are required.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+    if not _staff_can_access_subject(current_user.id, subject_id):
+        flash('You are not assigned to this subject.', 'danger')
         return redirect(url_for('staff.dashboard'))
 
     if year and not year.isdigit():
@@ -677,6 +699,9 @@ def upload_absentees():
 @staff_required
 def delete_absentee_record(record_id):
     rec = AbsenceRecord.query.get_or_404(record_id)
+    if rec.uploaded_by != current_user.id and not _staff_can_access_subject(current_user.id, rec.subject_id):
+        flash('You are not assigned to this absentee record.', 'danger')
+        return redirect(url_for('staff.dashboard'))
     db.session.delete(rec)
     db.session.commit()
     flash('Absentee record deleted.', 'success')
@@ -687,6 +712,8 @@ def delete_absentee_record(record_id):
 @login_required
 def get_absentee_students(record_id):
     rec = AbsenceRecord.query.get_or_404(record_id)
+    if has_role('subject_staff') and rec.uploaded_by != current_user.id and not _staff_can_access_subject(current_user.id, rec.subject_id):
+        return jsonify({'students': [], 'subject': '', 'cia': ''}), 403
     return jsonify({'students': rec.get_students(),
                     'subject': rec.subject.subject_name,
                     'cia': rec.cia_number})

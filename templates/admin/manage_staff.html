@@ -46,7 +46,7 @@
   <div class="table-wrapper">
     <table>
       <thead>
-        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Class</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Assignments</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for s in staff_list %}
@@ -73,7 +73,13 @@
           </td>
           <td style="font-size:12px;">{{ s.department or '—' }}</td>
           <td style="font-size:12px;">
-            {% if s.handling_year and s.handling_section %}
+            {% set rows = assignment_map.get(s.id, []) %}
+            {% if rows %}
+              {% for a in rows[:3] %}
+                <div>{{ a.academic_year_id or '-' }} | {{ a.department_id or a.subject.department or '-' }} | Sem {{ a.semester_id }} | {{ a.section_id }} | {{ a.subject.subject_name }}</div>
+              {% endfor %}
+              {% if rows|length > 3 %}<span class="text-muted">+ {{ rows|length - 3 }} more</span>{% endif %}
+            {% elif s.handling_year and s.handling_section %}
               Year {{ s.handling_year }} / Section {{ s.handling_section }}
             {% else %}
               <span class="text-muted">—</span>
@@ -163,6 +169,11 @@
           <input type="text" name="password" class="form-control" value="staff123">
         </div>
       </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label class="form-label">Teaching Assignments</label>
+        <div id="addAssignments"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="addAssignmentRow('addAssignments')">+ Add Assignment</button>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
         <button type="button" onclick="closeModal('addStaffModal')" class="btn btn-outline">Cancel</button>
         <button type="submit" class="btn btn-primary">✅ Add Staff</button>
@@ -209,6 +220,11 @@
         </div>
       </div>
       <div class="form-group"><label class="form-label">New Password <span style="color:#9ca3af;font-size:11px;">(blank = keep current)</span></label><input type="text" name="password" class="form-control" placeholder="Leave blank to keep"></div>
+      <div class="form-group">
+        <label class="form-label">Teaching Assignments</label>
+        <div id="editAssignments"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="addAssignmentRow('editAssignments')">+ Add Assignment</button>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
         <button type="button" onclick="closeModal('editStaffModal')" class="btn btn-outline">Cancel</button>
         <button type="submit" class="btn btn-primary">💾 Save</button>
@@ -220,6 +236,54 @@
 
 {% block scripts %}
 <script>
+const assignmentData = {
+{% for staff in staff_list %}
+  {{ staff.id }}: [
+    {% for a in assignment_map.get(staff.id, []) %}
+    {
+      academic_year_id: {{ (a.academic_year_id or '')|tojson }},
+      department_id: {{ (a.department_id or a.subject.department or '')|tojson }},
+      semester_id: {{ a.semester_id|tojson }},
+      section_id: {{ a.section_id|tojson }},
+      subject_id: {{ a.subject_id|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]{% if not loop.last %},{% endif %}
+{% endfor %}
+};
+const subjectOptions = `{% for sub in subjects %}<option value="{{ sub.id }}" data-semester="{{ sub.semester }}" data-department="{{ sub.department or '' }}">{{ sub.subject_name }} (Sem {{ sub.semester }})</option>{% endfor %}`;
+const sectionOptions = `{% for sec in sections %}<option value="{{ sec }}">Section {{ sec }}</option>{% endfor %}`;
+
+function addAssignmentRow(containerId, data = {}) {
+  const wrap = document.getElementById(containerId);
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.4fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+  row.innerHTML = `
+    <input type="text" name="assignment_academic_year[]" class="form-control" placeholder="Academic Year" value="${data.academic_year_id || ''}">
+    <input type="text" name="assignment_department[]" class="form-control" placeholder="Department" value="${data.department_id || ''}">
+    <select name="assignment_semester[]" class="form-control">${[1,2,3,4,5,6,7,8].map(n => `<option value="${n}">Sem ${n}</option>`).join('')}</select>
+    <select name="assignment_section[]" class="form-control">${sectionOptions}</select>
+    <select name="assignment_subject[]" class="form-control" onchange="fillAssignmentFromSubject(this)"><option value="">Subject</option>${subjectOptions}</select>
+    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">Delete</button>
+  `;
+  wrap.appendChild(row);
+  row.querySelector('[name="assignment_semester[]"]').value = data.semester_id || '';
+  row.querySelector('[name="assignment_section[]"]').value = data.section_id || '';
+  row.querySelector('[name="assignment_subject[]"]').value = data.subject_id || '';
+}
+
+function fillAssignmentFromSubject(select) {
+  const option = select.selectedOptions[0];
+  const row = select.parentElement;
+  if (!option) return;
+  const semester = option.getAttribute('data-semester');
+  const department = option.getAttribute('data-department');
+  if (semester) row.querySelector('[name="assignment_semester[]"]').value = semester;
+  if (department && !row.querySelector('[name="assignment_department[]"]').value) {
+    row.querySelector('[name="assignment_department[]"]').value = department;
+  }
+}
+
 function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSection) {
   document.getElementById('editName').value    = name;
   document.getElementById('editPhone').value   = phone;
@@ -228,7 +292,13 @@ function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSe
   document.getElementById('editHandlingYear').value = handlingYear;
   document.getElementById('editHandlingSection').value = handlingSection;
   document.getElementById('editForm').action   = `/admin/staff/edit/${uid}`;
+  document.getElementById('editAssignments').innerHTML = '';
+  (assignmentData[uid] || []).forEach(row => addAssignmentRow('editAssignments', row));
+  if (!(assignmentData[uid] || []).length) addAssignmentRow('editAssignments');
   openModal('editStaffModal');
 }
+document.addEventListener('DOMContentLoaded', function() {
+  addAssignmentRow('addAssignments');
+});
 </script>
 {% endblock %}

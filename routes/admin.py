@@ -2,7 +2,7 @@ import os, io, uuid, re
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
-from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance
+from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, StaffAssignment, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance
 from datetime import datetime, date, timedelta
 from functools import wraps
 from utils.permissions import has_role, has_any_role, role_required, log_current_user_permissions
@@ -13,6 +13,66 @@ SEMESTER_TO_YEAR = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4}
 SECTIONS = ['A', 'B', 'C']
 STUDENT_DEFAULT_PASSWORD = 'student123'
 STUDENT_EMAIL_DOMAIN = 'student.local'
+
+def _staff_assignment_payload():
+    academic_years = request.form.getlist('assignment_academic_year[]')
+    departments = request.form.getlist('assignment_department[]')
+    semesters = request.form.getlist('assignment_semester[]')
+    sections = request.form.getlist('assignment_section[]')
+    subjects = request.form.getlist('assignment_subject[]')
+    rows = []
+    seen = set()
+    for academic_year, department, semester, section, subject_id in zip(
+            academic_years, departments, semesters, sections, subjects):
+        if not subject_id:
+            continue
+        try:
+            semester_id = int(semester)
+            subject_id = int(subject_id)
+        except (TypeError, ValueError):
+            continue
+        section_id = (section or '').strip().upper()
+        if section_id not in SECTIONS:
+            continue
+        key = ((academic_year or '').strip(), (department or '').strip(),
+               semester_id, section_id, subject_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({
+            'academic_year_id': key[0],
+            'department_id': key[1],
+            'semester_id': semester_id,
+            'section_id': section_id,
+            'subject_id': subject_id
+        })
+    return rows
+
+
+def _replace_staff_assignments(staff, rows):
+    StaffAssignment.query.filter_by(staff_id=staff.id).delete()
+    for row in rows:
+        db.session.add(StaffAssignment(staff_id=staff.id, **row))
+        existing = SubjectStaffSection.query.filter_by(
+            subject_id=row['subject_id'],
+            semester=row['semester_id'],
+            section=row['section_id']
+        ).first()
+        if existing:
+            existing.staff_id = staff.id
+            existing.academic_year = row['academic_year_id']
+        else:
+            db.session.add(SubjectStaffSection(
+                subject_id=row['subject_id'],
+                staff_id=staff.id,
+                semester=row['semester_id'],
+                section=row['section_id'],
+                academic_year=row['academic_year_id']
+            ))
+    if rows:
+        first_subject = Subject.query.get(rows[0]['subject_id'])
+        if first_subject and not first_subject.staff_id:
+            first_subject.staff_id = staff.id
 
 def admin_required(f):
     return role_required('admin')(f)
@@ -982,7 +1042,19 @@ def manage_staff():
     staff_list = User.query.filter(
         User.role.in_(['subject_staff','tutor','hod','coordinator'])
     ).order_by(User.name).all()
-    return render_template('admin/manage_staff.html', staff_list=staff_list)
+    subjects = Subject.query.filter_by(is_active=True).order_by(
+        Subject.semester, Subject.subject_name).all()
+    assignments = StaffAssignment.query.order_by(
+        StaffAssignment.staff_id, StaffAssignment.semester_id,
+        StaffAssignment.section_id).all()
+    assignment_map = {}
+    for assignment in assignments:
+        assignment_map.setdefault(assignment.staff_id, []).append(assignment)
+    return render_template('admin/manage_staff.html',
+                           staff_list=staff_list,
+                           subjects=subjects,
+                           assignment_map=assignment_map,
+                           sections=SECTIONS)
 
 
 @admin_bp.route('/staff/add', methods=['POST'])
@@ -1010,7 +1082,9 @@ def add_staff():
              handling_year=int(h_year) if h_year else None,
              handling_section=h_sec if h_sec in ('A','B','C') else None)
     u.set_password(password)
-    db.session.add(u); db.session.commit()
+    db.session.add(u); db.session.flush()
+    _replace_staff_assignments(u, _staff_assignment_payload())
+    db.session.commit()
     flash(f'Staff added! Default password: {password}', 'success')
     return redirect(url_for('admin.manage_staff'))
 
@@ -1031,6 +1105,7 @@ def edit_staff(uid):
     u.handling_section = h_sec if h_sec in ('A','B','C') else None
     pw = request.form.get('password','').strip()
     if pw: u.set_password(pw)
+    _replace_staff_assignments(u, _staff_assignment_payload())
     db.session.commit(); flash('Staff updated.','success')
     return redirect(url_for('admin.manage_staff'))
 
@@ -1089,6 +1164,19 @@ def add_subject():
         department=request.form.get('department','').strip(),
         staff_id=int(request.form.get('staff_id')) if request.form.get('staff_id') else None)
     db.session.add(s); db.session.commit(); flash('Subject added.','success')
+    if s.staff_id:
+        assignment = StaffAssignment.query.filter_by(
+            staff_id=s.staff_id, subject_id=s.id, semester_id=s.semester,
+            section_id='A', academic_year_id='',
+            department_id=s.department or ''
+        ).first()
+        if not assignment:
+            db.session.add(StaffAssignment(
+                staff_id=s.staff_id, subject_id=s.id, semester_id=s.semester,
+                section_id='A', academic_year_id='',
+                department_id=s.department or ''
+            ))
+            db.session.commit()
     return redirect(url_for('admin.manage_subjects'))
 
 
@@ -1104,6 +1192,18 @@ def edit_subject(sid):
     s.department   = request.form.get('department', s.department)
     s.staff_id     = int(request.form.get('staff_id')) if request.form.get('staff_id') else None
     s.is_active    = request.form.get('is_active') == 'on'
+    if s.staff_id:
+        assignment = StaffAssignment.query.filter_by(
+            staff_id=s.staff_id, subject_id=s.id, semester_id=s.semester,
+            section_id='A', academic_year_id='',
+            department_id=s.department or ''
+        ).first()
+        if not assignment:
+            db.session.add(StaffAssignment(
+                staff_id=s.staff_id, subject_id=s.id, semester_id=s.semester,
+                section_id='A', academic_year_id='',
+                department_id=s.department or ''
+            ))
     db.session.commit(); flash('Subject updated.','success')
     return redirect(url_for('admin.manage_subjects'))
 
@@ -1133,6 +1233,7 @@ def add_section_map():
     staff_id   = int(request.form.get('staff_id'))
     semester   = int(request.form.get('semester'))
     section    = request.form.get('section','').upper().strip()
+    subject = Subject.query.get(subject_id)
     if section not in ('A','B','C'):
         flash('Invalid section.','danger')
         return redirect(url_for('admin.manage_subjects'))
@@ -1146,6 +1247,18 @@ def add_section_map():
             subject_id=subject_id, staff_id=staff_id,
             semester=semester, section=section))
         flash('Section mapping added.','success')
+    assignment = StaffAssignment.query.filter_by(
+        staff_id=staff_id, subject_id=subject_id,
+        semester_id=semester, section_id=section,
+        academic_year_id='', department_id=subject.department if subject and subject.department else ''
+    ).first()
+    if not assignment:
+        db.session.add(StaffAssignment(
+            staff_id=staff_id, subject_id=subject_id,
+            semester_id=semester, section_id=section,
+            academic_year_id='',
+            department_id=subject.department if subject and subject.department else ''
+        ))
     db.session.commit()
     return redirect(url_for('admin.manage_subjects'))
 
@@ -1155,6 +1268,13 @@ def add_section_map():
 @admin_required
 def delete_section_map(mid):
     m = SubjectStaffSection.query.get_or_404(mid)
+    StaffAssignment.query.filter_by(
+        staff_id=m.staff_id,
+        subject_id=m.subject_id,
+        semester_id=m.semester,
+        section_id=m.section,
+        academic_year_id=m.academic_year or ''
+    ).delete()
     db.session.delete(m); db.session.commit()
     flash('Section mapping removed.','success')
     return redirect(url_for('admin.manage_subjects'))

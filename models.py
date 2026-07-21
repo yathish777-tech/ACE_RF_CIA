@@ -130,6 +130,41 @@ class SubjectStaffSection(db.Model):
 # ─────────────────────────────────────────────────────────────────────────────
 # CIA DATE  (exam window per subject)
 # ─────────────────────────────────────────────────────────────────────────────
+class StaffAssignment(db.Model):
+    __tablename__ = 'staff_assignments'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    staff_id         = db.Column(db.Integer,
+                                 db.ForeignKey('user.id', ondelete='CASCADE'),
+                                 nullable=False)
+    academic_year_id = db.Column(db.String(20), nullable=False, default='')
+    department_id    = db.Column(db.String(100), nullable=False, default='')
+    semester_id      = db.Column(db.Integer, nullable=False)
+    section_id       = db.Column(db.String(5), nullable=False)
+    subject_id       = db.Column(db.Integer,
+                                 db.ForeignKey('subject.id', ondelete='CASCADE'),
+                                 nullable=False)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at       = db.Column(db.DateTime, default=datetime.utcnow,
+                                 onupdate=datetime.utcnow)
+
+    staff = db.relationship('User',
+                            backref=db.backref('staff_assignments', lazy='dynamic',
+                                               cascade='all, delete-orphan'))
+    subject = db.relationship('Subject',
+                              backref=db.backref('staff_assignments', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('staff_id', 'academic_year_id', 'department_id',
+                            'semester_id', 'section_id', 'subject_id',
+                            name='uq_staff_assignment'),
+    )
+
+    def __repr__(self):
+        return (f'<StaffAssignment staff={self.staff_id} subj={self.subject_id} '
+                f'sem={self.semester_id} sec={self.section_id}>')
+
+
 class CIADate(db.Model):
     __tablename__ = 'cia_date'
 
