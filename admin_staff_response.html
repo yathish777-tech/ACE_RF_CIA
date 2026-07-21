@@ -1,0 +1,1188 @@
+HTTP/1.1 200 OK
+Server: Werkzeug/3.0.4 Python/3.14.6
+Date: Tue, 21 Jul 2026 05:29:40 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 46605
+Vary: Cookie
+Connection: close
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Staff | Dept. Portal</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+  
+</head>
+<body>
+
+
+  
+
+
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <img src="/static/college_logo.png" alt="ACE Logo"
+             style="height:44px;width:44px;object-fit:contain;border-radius:50%;background:#fff;padding:3px;flex-shrink:0;">
+        <div class="brand-text">
+          <h2>CIA Retest</h2>
+          <span>Department Portal</span>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar">A</div>
+      <div class="user-info">
+        <div class="uname">Admin</div>
+        <div class="urole">Admin</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      
+<span class="nav-section-label">Overview</span>
+<a href="/admin/dashboard" class="nav-item "><span class="nav-icon">📊</span> Dashboard</a>
+<span class="nav-section-label" style="margin-top:10px;">Data Entry</span>
+<a href="/admin/bulk-upload" class="nav-item "><span class="nav-icon">📤</span> Bulk Upload</a>
+<a href="/admin/students" class="nav-item "><span class="nav-icon">🎓</span> Students</a>
+<a href="/admin/staff" class="nav-item active"><span class="nav-icon">👥</span> Manage Staff</a>
+<a href="/admin/subjects" class="nav-item "><span class="nav-icon">📚</span> Subjects</a>
+<a href="/admin/cia-dates" class="nav-item "><span class="nav-icon">📅</span> CIA Dates</a>
+<span class="nav-section-label" style="margin-top:10px;">Records</span>
+<a href="/admin/applications" class="nav-item "><span class="nav-icon">📋</span> Applications</a>
+<span class="nav-section-label" style="margin-top:10px;">Exam</span>
+<a href="/admin/manage-halls" class="nav-item "><span class="nav-icon">H</span> Manage Halls</a>
+<a href="/admin/seating-allocation" class="nav-item "><span class="nav-icon">🪑</span> Seating Allocation</a>
+<a href="/admin/attendance-summary" class="nav-item "><span class="nav-icon">✅</span> Attendance Summary</a>
+
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/auth/change-password" class="nav-item" style="color:rgba(255,255,255,0.6);font-size:13px;">
+        <span class="nav-icon">🔑</span> Change Password
+      </a>
+      <a href="/auth/logout" class="nav-item" style="color:rgba(255,255,255,0.6);">
+        <span class="nav-icon">🚪</span> Logout
+      </a>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-title">Staff Management</div>
+      <div class="topbar-actions">
+        <span class="badge badge-primary" style="font-size:12px;">
+          Admin
+        </span>
+        <a href="/auth/change-password" class="btn btn-outline btn-sm" title="Change Password">🔑</a>
+        <a href="/auth/logout" class="btn btn-outline btn-sm">Logout</a>
+      </div>
+    </header>
+
+    <!-- Flash messages — shown near content, not top of page -->
+    <div class="page-content">
+      
+        
+      
+      
+<div class="page-header">
+  <div>
+    <h2>👥 Staff Management</h2>
+    <p>Only the Admin (Exam Cell Coordinator) can add/manage staff accounts.</p>
+  </div>
+  <button onclick="openModal('addStaffModal')" class="btn btn-primary">+ Add Staff</button>
+</div>
+
+<div style="padding:14px 16px;background:#e8f5e9;border-radius:10px;border-left:4px solid #2e7d32;margin-bottom:14px;font-size:13px;color:#374151;">
+  <strong style="color:#1b5e20;">ℹ️ Role Clarification:</strong><br>
+  <strong>Admin</strong> = Exam Cell Coordinator (you — system administrator, single account, manages all staff)<br>
+  <strong>Coordinator</strong> = Department Coordinator (added by you below, approves LATE submissions only)
+</div>
+
+<div style="padding:12px 16px;background:#fff3e0;border-radius:10px;border-left:4px solid #f57c00;margin-bottom:18px;font-size:13px;color:#374151;">
+  <strong style="color:#e65100;">📋 Approval Flows:</strong><br>
+  <strong>PRE-submission:</strong> Subject Staff → Tutor → HOD (Final) &nbsp;|&nbsp;
+  <strong>LATE-submission:</strong> Subject Staff → Tutor → Dept. Coordinator → HOD (Final)
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>All Staff (21)</h3></div>
+  
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Assignments</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        
+        <tr>
+          <td>1</td>
+          <td><div class="fw-bold">Dr.G.Fathima</div></td>
+          <td style="font-size:12px;">hod_cse@adhiyamaan.in</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-warning">🏛️ HOD</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(370,'Dr.G.Fathima','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/370" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/370" style="display:inline;"
+                    onsubmit="return confirm('Delete Dr.G.Fathima? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>2</td>
+          <td><div class="fw-bold">Dr.S.Venkatesan</div></td>
+          <td style="font-size:12px;">deanacademic@adhiyamaan.ac.in</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(369,'Dr.S.Venkatesan','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/369" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/369" style="display:inline;"
+                    onsubmit="return confirm('Delete Dr.S.Venkatesan? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>3</td>
+          <td><div class="fw-bold">Mr.R.Vikram</div></td>
+          <td style="font-size:12px;">vikram.cse@adhiyamaan.in</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              
+                <div>2026 | Computer Science | Sem 5 | A | OD</div>
+              
+              
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(372,'Mr.R.Vikram','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/372" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/372" style="display:inline;"
+                    onsubmit="return confirm('Delete Mr.R.Vikram? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>4</td>
+          <td><div class="fw-bold">Mr.S.Vinoth Kumar</div></td>
+          <td style="font-size:12px;">vinoth2004885@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(374,'Mr.S.Vinoth Kumar','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/374" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/374" style="display:inline;"
+                    onsubmit="return confirm('Delete Mr.S.Vinoth Kumar? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>5</td>
+          <td><div class="fw-bold">Mrs. K.Mangai</div></td>
+          <td style="font-size:12px;">mangaimyk15@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(389,'Mrs. K.Mangai','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/389" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/389" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs. K.Mangai? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>6</td>
+          <td><div class="fw-bold">Mrs. R.S. Harithadevi</div></td>
+          <td style="font-size:12px;">harithasekar96@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(388,'Mrs. R.S. Harithadevi','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/388" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/388" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs. R.S. Harithadevi? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>7</td>
+          <td><div class="fw-bold">Mrs. S.Mohanapreetha</div></td>
+          <td style="font-size:12px;">preethasubbarayalu@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(387,'Mrs. S.Mohanapreetha','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/387" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/387" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs. S.Mohanapreetha? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>8</td>
+          <td><div class="fw-bold">Mrs.A.Lavanya</div></td>
+          <td style="font-size:12px;">a.lavanyait@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(373,'Mrs.A.Lavanya','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/373" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/373" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.A.Lavanya? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>9</td>
+          <td><div class="fw-bold">Mrs.A.Xavier Mary</div></td>
+          <td style="font-size:12px;">marybe.90@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(378,'Mrs.A.Xavier Mary','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/378" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/378" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.A.Xavier Mary? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>10</td>
+          <td><div class="fw-bold">Mrs.B.Sathya</div></td>
+          <td style="font-size:12px;">sathyadinesh69@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(386,'Mrs.B.Sathya','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/386" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/386" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.B.Sathya? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>11</td>
+          <td><div class="fw-bold">Mrs.C.Akshaya</div></td>
+          <td style="font-size:12px;">akshujayalakshmi03@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(380,'Mrs.C.Akshaya','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/380" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/380" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.C.Akshaya? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>12</td>
+          <td><div class="fw-bold">Mrs.D.M.Vijaya Lakshmi</div></td>
+          <td style="font-size:12px;">vijayalakshmimuniraj11@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-success">🎓 Dept. Coordinator</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(371,'Mrs.D.M.Vijaya Lakshmi','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/371" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/371" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.D.M.Vijaya Lakshmi? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>13</td>
+          <td><div class="fw-bold">Mrs.E.Goma</div></td>
+          <td style="font-size:12px;">goma.chandra143@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(375,'Mrs.E.Goma','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/375" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/375" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.E.Goma? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>14</td>
+          <td><div class="fw-bold">Mrs.K.Kavitha</div></td>
+          <td style="font-size:12px;">kavithakbe@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(385,'Mrs.K.Kavitha','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/385" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/385" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.K.Kavitha? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>15</td>
+          <td><div class="fw-bold">Mrs.K.Tamil Selvi</div></td>
+          <td style="font-size:12px;">tamilselvi.kumar@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            
+              <span class="badge badge-primary">👨‍🏫 Tutor</span>
+              
+            
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              Year 3 / Section C
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(382,'Mrs.K.Tamil Selvi','','','tutor','3','C')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/382" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/382" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.K.Tamil Selvi? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>16</td>
+          <td><div class="fw-bold">Mrs.K.Yazhini</div></td>
+          <td style="font-size:12px;">yazhinivijay3@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(383,'Mrs.K.Yazhini','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/383" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/383" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.K.Yazhini? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>17</td>
+          <td><div class="fw-bold">Mrs.R.Dhana Lakshmi</div></td>
+          <td style="font-size:12px;">dhanuvelace036@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(377,'Mrs.R.Dhana Lakshmi','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/377" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/377" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.R.Dhana Lakshmi? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>18</td>
+          <td><div class="fw-bold">Mrs.R.Vijayalakshmi</div></td>
+          <td style="font-size:12px;">vijiammu1710@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(384,'Mrs.R.Vijayalakshmi','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/384" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/384" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.R.Vijayalakshmi? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>19</td>
+          <td><div class="fw-bold">Mrs.S.Kavitha</div></td>
+          <td style="font-size:12px;">kavithaselvamani@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(381,'Mrs.S.Kavitha','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/381" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/381" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.S.Kavitha? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>20</td>
+          <td><div class="fw-bold">Mrs.T.Vinothini</div></td>
+          <td style="font-size:12px;">ktvinothini@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(379,'Mrs.T.Vinothini','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/379" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/379" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.T.Vinothini? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+        <tr>
+          <td>21</td>
+          <td><div class="fw-bold">Mrs.V.Meena</div></td>
+          <td style="font-size:12px;">vmeenamanjunath@gmail.com</td>
+          <td style="font-size:12px;">—</td>
+          <td>
+            <span class="badge badge-info">📚 Subject Staff</span>
+            
+          </td>
+          <td>
+            <span class="text-muted">—</span>
+          </td>
+          <td style="font-size:12px;">—</td>
+          <td style="font-size:12px;">
+            
+            
+              <span class="text-muted">—</span>
+            
+          </td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <button onclick="openEditModal(376,'Mrs.V.Meena','','','','','')" class="btn btn-outline btn-sm">Edit</button>
+              <form method="POST" action="/admin/staff/toggle/376" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">
+                  🔒
+                </button>
+              </form>
+              <form method="POST" action="/admin/staff/delete/376" style="display:inline;"
+                    onsubmit="return confirm('Delete Mrs.V.Meena? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        
+      </tbody>
+    </table>
+  </div>
+  
+</div>
+
+<!-- Add Staff Modal -->
+<div class="modal-overlay" id="addStaffModal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-header">
+      <h3>➕ Add Staff Member</h3>
+      <span class="modal-close" onclick="closeModal('addStaffModal')">✕</span>
+    </div>
+    <form method="POST" action="/admin/staff/add">
+      <div class="grid grid-2" style="gap:14px;">
+        <div class="form-group"><label class="form-label">Full Name *</label><input type="text" name="name" class="form-control" required></div>
+        <div class="form-group"><label class="form-label">Email Address *</label><input type="email" name="email" class="form-control" required></div>
+        <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Primary Role *</label>
+          <select name="role" class="form-control" required>
+            <option value="">-- Select --</option>
+            <option value="subject_staff">Subject Staff</option>
+            <option value="tutor">Tutor</option>
+            <option value="hod">HOD</option>
+            <option value="coordinator">Dept. Coordinator (LATE approvals)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Secondary Role <span style="color:#9ca3af">(optional)</span></label>
+          <select name="secondary_role" class="form-control">
+            <option value="">— None —</option>
+            <option value="subject_staff">Subject Staff</option>
+            <option value="tutor">Tutor</option>
+            <option value="hod">HOD</option>
+            <option value="coordinator">Dept. Coordinator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Department</label>
+          <select name="department" class="form-control">
+            <option value="">Select Dept.</option>
+            <option>Computer Science</option><option>Information Technology</option>
+            <option>Electronics</option><option>Mechanical</option><option>Civil</option><option>EEE</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handling Year</label>
+          <select name="handling_year" class="form-control">
+            <option value="">Select Year</option>
+            <option value="1">Year 1</option><option value="2">Year 2</option><option value="3">Year 3</option><option value="4">Year 4</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handling Section</label>
+          <select name="handling_section" class="form-control">
+            <option value="">Select Section</option>
+            <option value="A">Section A</option><option value="B">Section B</option><option value="C">Section C</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Login Password</label>
+          <input type="text" name="password" class="form-control" value="staff123">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label class="form-label">Teaching Assignments</label>
+        <div id="addAssignments"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="addAssignmentRow('addAssignments')">+ Add Assignment</button>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" onclick="closeModal('addStaffModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">✅ Add Staff</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Staff Modal -->
+<div class="modal-overlay" id="editStaffModal">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h3>✏️ Edit Staff</h3>
+      <span class="modal-close" onclick="closeModal('editStaffModal')">✕</span>
+    </div>
+    <form method="POST" id="editForm">
+      <div class="form-group"><label class="form-label">Name</label><input type="text" name="name" id="editName" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" id="editPhone" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Department</label><input type="text" name="department" id="editDept" class="form-control"></div>
+      <div class="form-group">
+        <label class="form-label">Secondary Role</label>
+        <select name="secondary_role" id="editSecRole" class="form-control">
+          <option value="">— None —</option>
+          <option value="subject_staff">Subject Staff</option>
+          <option value="tutor">Tutor</option>
+          <option value="hod">HOD</option>
+          <option value="coordinator">Dept. Coordinator</option>
+        </select>
+      </div>
+      <div class="grid grid-2" style="gap:14px;">
+        <div class="form-group">
+          <label class="form-label">Handling Year</label>
+          <select name="handling_year" id="editHandlingYear" class="form-control">
+            <option value="">Select Year</option>
+            <option value="1">Year 1</option><option value="2">Year 2</option><option value="3">Year 3</option><option value="4">Year 4</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Handling Section</label>
+          <select name="handling_section" id="editHandlingSection" class="form-control">
+            <option value="">Select Section</option>
+            <option value="A">Section A</option><option value="B">Section B</option><option value="C">Section C</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">New Password <span style="color:#9ca3af;font-size:11px;">(blank = keep current)</span></label><input type="text" name="password" class="form-control" placeholder="Leave blank to keep"></div>
+      <div class="form-group">
+        <label class="form-label">Teaching Assignments</label>
+        <div id="editAssignments"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="addAssignmentRow('editAssignments')">+ Add Assignment</button>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+        <button type="button" onclick="closeModal('editStaffModal')" class="btn btn-outline">Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+
+<script>
+// Auto-dismiss alerts
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-dismiss]').forEach(el => {
+    el.addEventListener('click', () => el.closest('.alert').remove());
+  });
+});
+
+function openModal(id) {
+  document.getElementById(id).classList.add('show');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+window.addEventListener('click', e => {
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    if(e.target === m) m.classList.remove('show');
+  });
+});
+</script>
+
+<script>
+const assignmentData = {
+
+  370: [
+    
+  ],
+
+  369: [
+    
+  ],
+
+  372: [
+    
+    {
+      academic_year_id: "2026",
+      department_id: "Computer Science",
+      semester_id: 5,
+      section_id: "A",
+      subject_id: 1
+    }
+    
+  ],
+
+  374: [
+    
+  ],
+
+  389: [
+    
+  ],
+
+  388: [
+    
+  ],
+
+  387: [
+    
+  ],
+
+  373: [
+    
+  ],
+
+  378: [
+    
+  ],
+
+  386: [
+    
+  ],
+
+  380: [
+    
+  ],
+
+  371: [
+    
+  ],
+
+  375: [
+    
+  ],
+
+  385: [
+    
+  ],
+
+  382: [
+    
+  ],
+
+  383: [
+    
+  ],
+
+  377: [
+    
+  ],
+
+  384: [
+    
+  ],
+
+  381: [
+    
+  ],
+
+  379: [
+    
+  ],
+
+  376: [
+    
+  ]
+
+};
+const subjectOptions = `<option value="1" data-semester="5" data-department="Computer Science">OD (Sem 5)</option>`;
+const sectionOptions = `<option value="A">Section A</option><option value="B">Section B</option><option value="C">Section C</option>`;
+
+function addAssignmentRow(containerId, data = {}) {
+  const wrap = document.getElementById(containerId);
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.4fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+  row.innerHTML = `
+    <input type="text" name="assignment_academic_year[]" class="form-control" placeholder="Academic Year" value="${data.academic_year_id || ''}">
+    <input type="text" name="assignment_department[]" class="form-control" placeholder="Department" value="${data.department_id || ''}">
+    <select name="assignment_semester[]" class="form-control">${[1,2,3,4,5,6,7,8].map(n => `<option value="${n}">Sem ${n}</option>`).join('')}</select>
+    <select name="assignment_section[]" class="form-control">${sectionOptions}</select>
+    <select name="assignment_subject[]" class="form-control" onchange="fillAssignmentFromSubject(this)"><option value="">Subject</option>${subjectOptions}</select>
+    <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">Delete</button>
+  `;
+  wrap.appendChild(row);
+  row.querySelector('[name="assignment_semester[]"]').value = data.semester_id || '';
+  row.querySelector('[name="assignment_section[]"]').value = data.section_id || '';
+  row.querySelector('[name="assignment_subject[]"]').value = data.subject_id || '';
+}
+
+function fillAssignmentFromSubject(select) {
+  const option = select.selectedOptions[0];
+  const row = select.parentElement;
+  if (!option) return;
+  const semester = option.getAttribute('data-semester');
+  const department = option.getAttribute('data-department');
+  if (semester) row.querySelector('[name="assignment_semester[]"]').value = semester;
+  if (department && !row.querySelector('[name="assignment_department[]"]').value) {
+    row.querySelector('[name="assignment_department[]"]').value = department;
+  }
+}
+
+function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSection) {
+  document.getElementById('editName').value    = name;
+  document.getElementById('editPhone').value   = phone;
+  document.getElementById('editDept').value    = dept;
+  document.getElementById('editSecRole').value = secRole;
+  document.getElementById('editHandlingYear').value = handlingYear;
+  document.getElementById('editHandlingSection').value = handlingSection;
+  document.getElementById('editForm').action   = `/admin/staff/edit/${uid}`;
+  document.getElementById('editAssignments').innerHTML = '';
+  (assignmentData[uid] || []).forEach(row => addAssignmentRow('editAssignments', row));
+  if (!(assignmentData[uid] || []).length) addAssignmentRow('editAssignments');
+  openModal('editStaffModal');
+}
+document.addEventListener('DOMContentLoaded', function() {
+  addAssignmentRow('addAssignments');
+});
+</script>
+
+</body>
+</html>

@@ -2,6 +2,35 @@
 {% block title %}Manage Staff{% endblock %}
 {% block page_title %}Staff Management{% endblock %}
 
+{% block head %}
+<style>
+body.edit-staff-modal-open { overflow: hidden; }
+#editStaffModal { background: rgba(15, 23, 42, 0.58); padding: 18px; overflow: hidden; }
+#editStaffModal .modal { width: min(760px, 100%); max-width: 760px !important; max-height: calc(100vh - 36px); padding: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 14px; animation: editStaffIn 0.22s ease; }
+#editStaffModal .modal-header { padding: 20px 24px 16px; margin-bottom: 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#editStaffModal .modal-close { border: 0; background: transparent; width: 34px; height: 34px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
+#editStaffModal .modal-close:hover { background: #f3f4f6; color: var(--primary); }
+.edit-staff-form { min-height: 0; display: flex; flex-direction: column; flex: 1; }
+.edit-staff-body { padding: 22px 24px; overflow-y: auto; min-height: 0; }
+.edit-staff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.edit-staff-full { grid-column: 1 / -1; }
+#editStaffModal .form-group { margin-bottom: 0; }
+#editStaffModal .form-label { margin-bottom: 7px; }
+.edit-staff-assignment-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr 0.8fr 1.4fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+.edit-staff-actions { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; background: white; }
+#staffFeedback { margin-bottom: 14px; }
+@keyframes editStaffIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (max-width: 720px) {
+  #editStaffModal { padding: 10px; }
+  #editStaffModal .modal { max-height: calc(100vh - 20px); }
+  #editStaffModal .modal-header, .edit-staff-body, .edit-staff-actions { padding-left: 16px; padding-right: 16px; }
+  .edit-staff-grid, .edit-staff-assignment-row { grid-template-columns: 1fr; }
+  .edit-staff-actions { flex-direction: column-reverse; }
+  .edit-staff-actions .btn { justify-content: center; width: 100%; }
+}
+</style>
+{% endblock %}
+
 {% block sidebar_nav %}
 <span class="nav-section-label">Overview</span>
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item {% if request.endpoint=='admin.dashboard' %}active{% endif %}"><span class="nav-icon">📊</span> Dashboard</a>
@@ -40,8 +69,10 @@
   <strong>LATE-submission:</strong> Subject Staff → Tutor → Dept. Coordinator → HOD (Final)
 </div>
 
+<div id="staffFeedback" aria-live="polite"></div>
+
 <div class="card">
-  <div class="card-header"><h3>All Staff ({{ staff_list|length }})</h3></div>
+  <div class="card-header"><h3>All Staff (<span id="staffCount">{{ staff_list|length }}</span>)</h3></div>
   {% if staff_list %}
   <div class="table-wrapper">
     <table>
@@ -50,7 +81,7 @@
       </thead>
       <tbody>
         {% for s in staff_list %}
-        <tr>
+        <tr id="staffRow{{ s.id }}">
           <td>{{ loop.index }}</td>
           <td><div class="fw-bold">{{ s.name }}</div></td>
           <td style="font-size:12px;">{{ s.email }}</td>
@@ -94,8 +125,7 @@
                   {{ '🔒' if s.is_active else '🔓' }}
                 </button>
               </form>
-              <form method="POST" action="{{ url_for('admin.delete_staff', uid=s.id) }}" style="display:inline;"
-                    onsubmit="return confirm('Delete {{ s.name }}? This cannot be undone.');">
+              <form method="POST" action="{{ url_for('admin.delete_staff', uid=s.id) }}" class="delete-staff-form" data-staff-id="{{ s.id }}" data-staff-name="{{ s.name }}" style="display:inline;">
                 <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
               </form>
             </div>
@@ -183,13 +213,15 @@
 </div>
 
 <!-- Edit Staff Modal -->
-<div class="modal-overlay" id="editStaffModal">
+<div class="modal-overlay" id="editStaffModal" role="dialog" aria-modal="true" aria-label="Edit Staff">
   <div class="modal" style="max-width:500px;">
     <div class="modal-header">
       <h3>✏️ Edit Staff</h3>
-      <span class="modal-close" onclick="closeModal('editStaffModal')">✕</span>
+      <span class="modal-close" onclick="closeEditStaffModal()">✕</span>
     </div>
-    <form method="POST" id="editForm">
+    <form method="POST" id="editForm" class="edit-staff-form">
+      <div class="edit-staff-body">
+      <div class="edit-staff-grid">
       <div class="form-group"><label class="form-label">Name</label><input type="text" name="name" id="editName" class="form-control"></div>
       <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" id="editPhone" class="form-control"></div>
       <div class="form-group"><label class="form-label">Department</label><input type="text" name="department" id="editDept" class="form-control"></div>
@@ -203,7 +235,7 @@
           <option value="coordinator">Dept. Coordinator</option>
         </select>
       </div>
-      <div class="grid grid-2" style="gap:14px;">
+      <div class="edit-staff-grid edit-staff-full">
         <div class="form-group">
           <label class="form-label">Handling Year</label>
           <select name="handling_year" id="editHandlingYear" class="form-control">
@@ -219,14 +251,16 @@
           </select>
         </div>
       </div>
-      <div class="form-group"><label class="form-label">New Password <span style="color:#9ca3af;font-size:11px;">(blank = keep current)</span></label><input type="text" name="password" class="form-control" placeholder="Leave blank to keep"></div>
-      <div class="form-group">
+      <div class="form-group edit-staff-full"><label class="form-label">New Password <span style="color:#9ca3af;font-size:11px;">(blank = keep current)</span></label><input type="text" name="password" class="form-control" placeholder="Leave blank to keep"></div>
+      <div class="form-group edit-staff-full">
         <label class="form-label">Teaching Assignments</label>
         <div id="editAssignments"></div>
         <button type="button" class="btn btn-outline btn-sm" onclick="addAssignmentRow('editAssignments')">+ Add Assignment</button>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
-        <button type="button" onclick="closeModal('editStaffModal')" class="btn btn-outline">Cancel</button>
+      </div>
+      </div>
+      <div class="edit-staff-actions">
+        <button type="button" onclick="closeEditStaffModal()" class="btn btn-outline">Cancel</button>
         <button type="submit" class="btn btn-primary">💾 Save</button>
       </div>
     </form>
@@ -258,6 +292,10 @@ function addAssignmentRow(containerId, data = {}) {
   const wrap = document.getElementById(containerId);
   const row = document.createElement('div');
   row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.4fr auto;gap:8px;margin-bottom:8px;align-items:center;';
+  if (containerId === 'editAssignments') {
+    row.className = 'edit-staff-assignment-row';
+    row.style.cssText = '';
+  }
   row.innerHTML = `
     <input type="text" name="assignment_academic_year[]" class="form-control" placeholder="Academic Year" value="${data.academic_year_id || ''}">
     <input type="text" name="assignment_department[]" class="form-control" placeholder="Department" value="${data.department_id || ''}">
@@ -295,10 +333,53 @@ function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSe
   document.getElementById('editAssignments').innerHTML = '';
   (assignmentData[uid] || []).forEach(row => addAssignmentRow('editAssignments', row));
   if (!(assignmentData[uid] || []).length) addAssignmentRow('editAssignments');
+  document.body.classList.add('edit-staff-modal-open');
   openModal('editStaffModal');
+}
+function closeEditStaffModal() {
+  closeModal('editStaffModal');
+  document.body.classList.remove('edit-staff-modal-open');
+}
+function showStaffMessage(message, type) {
+  const feedback = document.getElementById('staffFeedback');
+  if (!feedback) return;
+  feedback.innerHTML = `<div class="alert alert-${type}" style="margin-bottom:0;">${message}</div>`;
+  setTimeout(() => { feedback.innerHTML = ''; }, 5000);
 }
 document.addEventListener('DOMContentLoaded', function() {
   addAssignmentRow('addAssignments');
+  document.querySelectorAll('.delete-staff-form').forEach(form => {
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const staffName = this.dataset.staffName || 'this staff member';
+      if (!confirm(`Delete ${staffName}? This cannot be undone.`)) return;
+      const button = this.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
+      try {
+        const res = await fetch(this.action, {
+          method: 'POST',
+          headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Staff delete failed.');
+        document.getElementById(`staffRow${this.dataset.staffId}`)?.remove();
+        const countEl = document.getElementById('staffCount');
+        if (countEl) countEl.textContent = Math.max(0, Number(countEl.textContent || 0) - 1);
+        showStaffMessage(data.message || 'Staff deleted successfully.', 'success');
+      } catch (err) {
+        showStaffMessage(err.message || 'Could not delete staff. Please try again.', 'danger');
+        if (button) button.disabled = false;
+      }
+    });
+  });
+  document.getElementById('editStaffModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditStaffModal();
+  });
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('editStaffModal')?.classList.contains('show')) {
+    closeEditStaffModal();
+  }
 });
 </script>
 {% endblock %}

@@ -2,6 +2,7 @@ import os, io, uuid, re
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
+from sqlalchemy.exc import IntegrityError
 from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, StaffAssignment, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -1114,14 +1115,50 @@ def edit_staff(uid):
 @login_required
 @admin_required
 def delete_staff(uid):
+    wants_json = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or \
+        'application/json' in request.headers.get('Accept', '')
     u = User.query.get_or_404(uid)
-    linked = RetestApplication.query.filter(
-        (RetestApplication.staff_id == uid) | (RetestApplication.tutor_id == uid)).count()
-    if linked:
-        flash(f'Cannot delete — linked to {linked} application(s).','danger')
+    if u.role == 'admin':
+        message = 'Admin accounts cannot be deleted from Staff Management.'
+        if wants_json:
+            return jsonify({'success': False, 'message': message}), 400
+        flash(message, 'danger')
         return redirect(url_for('admin.manage_staff'))
-    db.session.delete(u); db.session.commit()
-    flash(f'"{u.name}" deleted.', 'success')
+
+    staff_name = u.name
+    try:
+        Subject.query.filter_by(staff_id=uid).update({'staff_id': None})
+        RetestApplication.query.filter_by(staff_id=uid).update({'staff_id': None})
+        RetestApplication.query.filter_by(tutor_id=uid).update({'tutor_id': None})
+        RetestApplication.query.filter_by(retransmit_by=uid).update({'retransmit_by': None})
+        AbsenceRecord.query.filter_by(uploaded_by=uid).update({'uploaded_by': None})
+        CIADate.query.filter_by(created_by=uid).update({'created_by': None})
+        SeatingAllotment.query.filter_by(invigilator_id=uid).update({'invigilator_id': None})
+        SeatingAllotment.query.filter_by(uploaded_by=uid).update({'uploaded_by': None})
+        ExamAttendance.query.filter_by(marked_by=uid).update({'marked_by': None})
+        HallAttendance.query.filter_by(invigilator_staff_id=uid).update({'invigilator_staff_id': None})
+        StaffAssignment.query.filter_by(staff_id=uid).delete()
+        SubjectStaffSection.query.filter_by(staff_id=uid).delete()
+        db.session.delete(u)
+        db.session.commit()
+        message = f'"{staff_name}" deleted successfully.'
+        if wants_json:
+            return jsonify({'success': True, 'message': message, 'staff_id': uid})
+        flash(message, 'success')
+    except IntegrityError:
+        db.session.rollback()
+        current_app.logger.exception('Staff delete failed due to database constraint for user %s', uid)
+        message = 'Could not delete staff because related records still reference this account.'
+        if wants_json:
+            return jsonify({'success': False, 'message': message}), 409
+        flash(message, 'danger')
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Staff delete failed for user %s', uid)
+        message = 'Could not delete staff. Please try again or contact support.'
+        if wants_json:
+            return jsonify({'success': False, 'message': message}), 500
+        flash(message, 'danger')
     return redirect(url_for('admin.manage_staff'))
 
 
