@@ -1927,9 +1927,12 @@ def manage_halls():
 @login_required
 @admin_required
 def delete_hall(hall_id):
-    db.session.delete(Hall.query.get_or_404(hall_id))
+    hall = Hall.query.get_or_404(hall_id)
+    SeatingAllocation.query.filter_by(hall_id=hall.id).delete(synchronize_session=False)
+    HallAttendance.query.filter_by(hall_id=hall.id).delete(synchronize_session=False)
+    db.session.delete(hall)
     db.session.commit()
-    flash('Hall deleted.', 'success')
+    flash('Hall and related seating records deleted.', 'success')
     return redirect(url_for('admin.manage_halls'))
 
 
