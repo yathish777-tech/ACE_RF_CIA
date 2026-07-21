@@ -2131,7 +2131,12 @@ def download_seating_allocation(fmt):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet
-    buf = io.BytesIO(); doc = SimpleDocTemplate(buf, pagesize=landscape(A4)); styles = getSampleStyleSheet(); els = []
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        leftMargin=18, rightMargin=18, topMargin=30, bottomMargin=24
+    )
+    styles = getSampleStyleSheet(); els = []
     if not groups:
         els.append(Paragraph('No seating allocation found for the selected CIA/date.', styles['Normal']))
     for idx, group in enumerate(groups):
@@ -2156,10 +2161,13 @@ def download_seating_allocation(fmt):
                         cell = 'VACANT'
                     row_data.append(cell)
             data.append(row_data)
-        table = Table(data, repeatRows=1, colWidths=[75] * (columns * sub_cols))
+        total_sub_cols = max(columns * sub_cols, 1)
+        seat_col_width = doc.width / total_sub_cols
+        table_font_size = 6 if columns >= 4 else 7
+        table = Table(data, repeatRows=1, colWidths=[seat_col_width] * total_sub_cols)
         style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#D6D6D6')), ('TEXTCOLOR',(0,0),(-1,0),colors.black),
                  ('GRID',(0,0),(-1,-1),0.7,colors.black), ('ALIGN',(0,0),(-1,-1),'CENTER'),
-                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),7)]
+                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),table_font_size)]
         for col in range(columns):
             base = col * sub_cols
             style += [
