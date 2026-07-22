@@ -4,7 +4,14 @@
 
 {% block head %}
 <style>
-body.edit-staff-modal-open { overflow: hidden; }
+body.edit-staff-modal-open,
+body.add-staff-modal-open { overflow: hidden; }
+#addStaffModal { padding: 18px; overflow: hidden; overscroll-behavior: contain; }
+#addStaffModal .modal { max-height: calc(100vh - 36px); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+#addStaffModal .modal-header { padding: 32px 32px 0; margin-bottom: 0; flex-shrink: 0; background: white; }
+.add-staff-form { min-height: 0; display: flex; flex-direction: column; flex: 1; }
+.add-staff-body { padding: 20px 32px 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; min-height: 0; }
+.add-staff-actions { padding: 14px 32px 32px; display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; background: white; }
 #editStaffModal { background: rgba(15, 23, 42, 0.58); padding: 18px; overflow: hidden; }
 #editStaffModal .modal { width: min(760px, 100%); max-width: 760px !important; max-height: calc(100vh - 36px); padding: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 14px; animation: editStaffIn 0.22s ease; }
 #editStaffModal .modal-header { padding: 20px 24px 16px; margin-bottom: 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -54,7 +61,7 @@ body.edit-staff-modal-open { overflow: hidden; }
     <h2>👥 Staff Management</h2>
     <p>Only the Admin (Exam Cell Coordinator) can add/manage staff accounts.</p>
   </div>
-  <button onclick="openModal('addStaffModal')" class="btn btn-primary">+ Add Staff</button>
+  <button onclick="openAddStaffModal()" class="btn btn-primary">+ Add Staff</button>
 </div>
 
 <div style="padding:14px 16px;background:#e8f5e9;border-radius:10px;border-left:4px solid #2e7d32;margin-bottom:14px;font-size:13px;color:#374151;">
@@ -145,9 +152,10 @@ body.edit-staff-modal-open { overflow: hidden; }
   <div class="modal" style="max-width:580px;">
     <div class="modal-header">
       <h3>➕ Add Staff Member</h3>
-      <span class="modal-close" onclick="closeModal('addStaffModal')">✕</span>
+      <span class="modal-close" onclick="closeAddStaffModal()">✕</span>
     </div>
-    <form method="POST" action="{{ url_for('admin.add_staff') }}">
+    <form method="POST" action="{{ url_for('admin.add_staff') }}" class="add-staff-form">
+      <div class="add-staff-body" tabindex="-1">
       <div class="grid grid-2" style="gap:14px;">
         <div class="form-group"><label class="form-label">Full Name *</label><input type="text" name="name" class="form-control" required></div>
         <div class="form-group"><label class="form-label">Email Address *</label><input type="email" name="email" class="form-control" required></div>
@@ -204,8 +212,9 @@ body.edit-staff-modal-open { overflow: hidden; }
         <div id="addAssignments"></div>
         <button type="button" class="btn btn-outline btn-sm" onclick="addAssignmentRow('addAssignments')">+ Add Assignment</button>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
-        <button type="button" onclick="closeModal('addStaffModal')" class="btn btn-outline">Cancel</button>
+      </div>
+      <div class="add-staff-actions">
+        <button type="button" onclick="closeAddStaffModal()" class="btn btn-outline">Cancel</button>
         <button type="submit" class="btn btn-primary">✅ Add Staff</button>
       </div>
     </form>
@@ -322,6 +331,16 @@ function fillAssignmentFromSubject(select) {
   }
 }
 
+function openAddStaffModal() {
+  document.body.classList.add('add-staff-modal-open');
+  openModal('addStaffModal');
+  document.querySelector('#addStaffModal .add-staff-body')?.focus({ preventScroll: true });
+}
+function closeAddStaffModal() {
+  closeModal('addStaffModal');
+  document.body.classList.remove('add-staff-modal-open');
+}
+
 function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSection) {
   document.getElementById('editName').value    = name;
   document.getElementById('editPhone').value   = phone;
@@ -375,8 +394,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('editStaffModal').addEventListener('click', function(e) {
     if (e.target === this) closeEditStaffModal();
   });
+  document.getElementById('addStaffModal').addEventListener('click', function(e) {
+    if (e.target === this) closeAddStaffModal();
+  });
 });
 document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('addStaffModal')?.classList.contains('show')) {
+    closeAddStaffModal();
+  }
   if (e.key === 'Escape' && document.getElementById('editStaffModal')?.classList.contains('show')) {
     closeEditStaffModal();
   }
