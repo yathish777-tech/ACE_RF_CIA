@@ -8,7 +8,7 @@ class Config:
 
     # ── MySQL ──────────────────────────────────────────────────────────────
  
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL','mysql+pymysql://root:12345@localhost/cia_rf_1')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL','mysql+pymysql://root:acecse@localhost/cia_rf_1')
  
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 

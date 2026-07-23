@@ -1254,9 +1254,15 @@ def delete_subject(sid):
     if linked:
         flash(f'Cannot delete — {linked} application(s) exist.','danger')
         return redirect(url_for('admin.manage_subjects'))
+
+    # Remove dependent rows first so SQLAlchemy does not try to null out the
+    # non-nullable subject_id foreign key during subject deletion.
+    StaffAssignment.query.filter_by(subject_id=sid).delete()
     SubjectStaffSection.query.filter_by(subject_id=sid).delete()
     CIADate.query.filter_by(subject_id=sid).delete()
-    db.session.delete(s); db.session.commit()
+
+    db.session.delete(s)
+    db.session.commit()
     flash('Subject deleted.','success')
     return redirect(url_for('admin.manage_subjects'))
 
