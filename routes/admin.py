@@ -1723,23 +1723,25 @@ def _register_suffix(register_number):
 
 
 def _allocation_students(selected_years, selected_student_ids):
-    """Fetch only the administrator-selected students, sorted by year/register number."""
+    """Fetch only the administrator-selected students in the submitted order."""
     students = User.query.filter(
         User.role == 'student',
         User.year.in_(selected_years),
         User.id.in_(selected_student_ids),
         User.register_number.isnot(None),
     ).all()
+    students_by_id = {student.id: student for student in students}
     by_year = {year: [] for year in selected_years}
-    for student in students:
+    for student_id in selected_student_ids:
+        student = students_by_id.get(student_id)
+        if not student:
+            continue
         if _normalize_register_number(student.register_number):
             by_year[student.year].append({
                 'register_number': student.register_number, 'name': student.name,
                 'department': student.department or '',
                 'year': YEAR_TEXT.get(student.year, f'Year {student.year}'),
             })
-    for year_students in by_year.values():
-        year_students.sort(key=lambda student: (_register_suffix(student['register_number']), student['register_number']))
     return by_year
 
 
@@ -1855,7 +1857,6 @@ def seating_allocation_students():
     if not years:
         return jsonify({'students': []})
     students = User.query.filter(User.role == 'student', User.year.in_(years), User.register_number.isnot(None)).all()
-    students.sort(key=lambda student: (student.year, _register_suffix(student.register_number), student.register_number))
     return jsonify({'students': [
         {'id': student.id, 'register_number': student.register_number, 'name': student.name, 'year': student.year}
         for student in students if _normalize_register_number(student.register_number)
