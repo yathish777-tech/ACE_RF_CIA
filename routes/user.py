@@ -3,7 +3,7 @@ import cloudinary.uploader
 from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, current_app, jsonify)
 from flask_login import login_required, current_user
-from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection, AbsenceRecord, HallAttendance
+from models import db, User, Subject, CIADate, RetestApplication, SubjectStaffSection, StaffRoleEntry, AbsenceRecord, HallAttendance
 from datetime import datetime, date
 from functools import wraps
 from utils.permissions import has_role, role_required
@@ -99,8 +99,10 @@ def _find_tutor_for_class(year, section):
     section = (section or '').upper().strip()
     if not year or not section:
         return None
-    return User.query.filter(
-        (User.role == 'tutor') | (User.secondary_role == 'tutor'),
+    return User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
+        StaffRoleEntry.role_name == 'tutor',
         User.handling_year == year,
         db.func.upper(User.handling_section) == section,
         User.is_active == True

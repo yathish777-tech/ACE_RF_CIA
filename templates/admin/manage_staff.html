@@ -26,15 +26,25 @@ body.add-staff-modal-open { overflow: hidden; }
 .edit-staff-assignment-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr 0.8fr 1.4fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
 .edit-staff-actions { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; background: white; }
 #staffFeedback { margin-bottom: 14px; }
-@keyframes editStaffIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@media (max-width: 720px) {
-  #editStaffModal { padding: 10px; }
-  #editStaffModal .modal { max-height: calc(100vh - 20px); }
-  #editStaffModal .modal-header, .edit-staff-body, .edit-staff-actions { padding-left: 16px; padding-right: 16px; }
-  .edit-staff-grid, .edit-staff-assignment-row { grid-template-columns: 1fr; }
-  .edit-staff-actions { flex-direction: column-reverse; }
-  .edit-staff-actions .btn { justify-content: center; width: 100%; }
+/* ── Role badge colours ─────────────────────────────────────────────────── */
+.roles-cell { display:flex; flex-wrap:wrap; gap:4px; }
+.role-badge { display:inline-flex; align-items:center; padding:2px 9px; border-radius:6px; font-size:11px; font-weight:600; white-space:nowrap; }
+.role-badge-subject_staff { background:#e0f2fe; color:#0369a1; }
+.role-badge-tutor         { background:#ede9fe; color:#6d28d9; }
+.role-badge-hod           { background:#fef3c7; color:#92400e; }
+.role-badge-coordinator   { background:#dcfce7; color:#166534; }
+.role-badge-admin         { background:#fee2e2; color:#991b1b; }
+/* ── Multi-role checkbox pill selector ──────────────────────────────────── */
+.role-checkbox-list { display:flex; flex-wrap:wrap; gap:7px; margin-top:5px; }
+.role-checkbox-item {
+  display:flex; align-items:center; gap:5px;
+  padding:5px 11px; border:1.5px solid #e2e8f0; border-radius:8px;
+  cursor:pointer; background:#f8fafc; font-size:13px;
+  transition:all .15s ease; user-select:none;
 }
+.role-checkbox-item:hover { border-color:#6d28d9; background:#f5f3ff; }
+.role-checkbox-item.checked { border-color:#6d28d9; background:#ede9fe; color:#5b21b6; font-weight:600; }
+.role-checkbox-item input[type="checkbox"] { accent-color:#6d28d9; width:14px; height:14px; cursor:pointer; }
 </style>
 {% endblock %}
 
@@ -84,7 +94,7 @@ body.add-staff-modal-open { overflow: hidden; }
   <div class="table-wrapper">
     <table>
       <thead>
-        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Primary Role</th><th>Secondary Role</th><th>Dept.</th><th>Assignments</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Roles</th><th>Dept.</th><th>Assignments</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for s in staff_list %}
@@ -94,20 +104,20 @@ body.add-staff-modal-open { overflow: hidden; }
           <td style="font-size:12px;">{{ s.email }}</td>
           <td style="font-size:12px;">{{ s.phone or '—' }}</td>
           <td>
-            {% if s.role == 'subject_staff' %}<span class="badge badge-info">📚 Subject Staff</span>
-            {% elif s.role == 'tutor' %}<span class="badge badge-primary">👨‍🏫 Tutor</span>
-            {% elif s.role == 'hod' %}<span class="badge badge-warning">🏛️ HOD</span>
-            {% elif s.role == 'coordinator' %}<span class="badge badge-success">🎓 Dept. Coordinator</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if s.secondary_role %}
-              {% if s.secondary_role == 'subject_staff' %}<span class="badge badge-info">📚 Subject Staff</span>
-              {% elif s.secondary_role == 'tutor' %}<span class="badge badge-primary">👨‍🏫 Tutor</span>
-              {% elif s.secondary_role == 'hod' %}<span class="badge badge-warning">🏛️ HOD</span>
-              {% elif s.secondary_role == 'coordinator' %}<span class="badge badge-success">🎓 Dept. Coordinator</span>
-              {% endif %}
-            {% else %}<span class="text-muted">—</span>{% endif %}
+            <div class="roles-cell">
+              {% set s_roles = staff_roles_map.get(s.id, [s.role]) %}
+              {% for r in s_roles %}
+                {% if r == 'subject_staff' %}<span class="role-badge role-badge-subject_staff">📚 Subject Staff</span>
+                {% elif r == 'tutor' %}<span class="role-badge role-badge-tutor">👨‍🏫 Tutor</span>
+                {% elif r == 'hod' %}<span class="role-badge role-badge-hod">🏛️ HOD</span>
+                {% elif r == 'coordinator' %}<span class="role-badge role-badge-coordinator">🎓 Coordinator</span>
+                {% elif r == 'admin' %}<span class="role-badge role-badge-admin">🔑 Admin</span>
+                {% else %}<span class="role-badge" style="background:#f3f4f6;color:#374151;">{{ r }}</span>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endfor %}
+            </div>
           </td>
           <td style="font-size:12px;">{{ s.department or '—' }}</td>
           <td style="font-size:12px;">
@@ -126,7 +136,9 @@ body.add-staff-modal-open { overflow: hidden; }
           <td>{% if s.is_active %}<span class="badge badge-success">Active</span>{% else %}<span class="badge badge-danger">Inactive</span>{% endif %}</td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
-              <button onclick="openEditModal({{ s.id }},'{{ s.name }}','{{ s.phone or '' }}','{{ s.department or '' }}','{{ s.secondary_role or '' }}','{{ s.handling_year or '' }}','{{ s.handling_section or '' }}')" class="btn btn-outline btn-sm">Edit</button>
+              <button
+                onclick='openEditModal({{ s.id }}, {{ s.name|tojson }}, {{ (s.phone or "")|tojson }}, {{ (s.department or "")|tojson }}, {{ staff_roles_map.get(s.id, [s.role])|tojson }}, {{ (s.handling_year or "")|tojson }}, {{ (s.handling_section or "")|tojson }})'
+                class="btn btn-outline btn-sm">Edit</button>
               <form method="POST" action="{{ url_for('admin.toggle_staff', uid=s.id) }}" style="display:inline;">
                 <button type="submit" class="btn btn-sm {{ 'btn-warning' if s.is_active else 'btn-success' }}">
                   {{ '🔒' if s.is_active else '🔓' }}
@@ -160,25 +172,18 @@ body.add-staff-modal-open { overflow: hidden; }
         <div class="form-group"><label class="form-label">Full Name *</label><input type="text" name="name" class="form-control" required></div>
         <div class="form-group"><label class="form-label">Email Address *</label><input type="email" name="email" class="form-control" required></div>
         <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" class="form-control"></div>
-        <div class="form-group">
-          <label class="form-label">Primary Role *</label>
-          <select name="role" class="form-control" required>
-            <option value="">-- Select --</option>
-            <option value="subject_staff">Subject Staff</option>
-            <option value="tutor">Tutor</option>
-            <option value="hod">HOD</option>
-            <option value="coordinator">Dept. Coordinator (LATE approvals)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Secondary Role <span style="color:#9ca3af">(optional)</span></label>
-          <select name="secondary_role" class="form-control">
-            <option value="">— None —</option>
-            <option value="subject_staff">Subject Staff</option>
-            <option value="tutor">Tutor</option>
-            <option value="hod">HOD</option>
-            <option value="coordinator">Dept. Coordinator</option>
-          </select>
+        <div class="form-group" style="grid-column:span 2;">
+          <label class="form-label">Roles * <span style="color:#9ca3af;font-size:11px;">(select all that apply — unlimited)</span></label>
+          <div class="role-checkbox-list" id="addRoleList">
+            {% for r in all_roles %}
+            <label class="role-checkbox-item" id="add-lbl-{{ r }}">
+              <input type="checkbox" name="roles[]" value="{{ r }}"
+                     onchange="syncRoleLabel(this,'add-lbl-{{ r }}')"
+              > {{ r.replace('_',' ').title() }}
+            </label>
+            {% endfor %}
+          </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:5px;">💡 The <strong>first</strong> checked role is used for login routing.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Department</label>
@@ -235,14 +240,16 @@ body.add-staff-modal-open { overflow: hidden; }
       <div class="form-group"><label class="form-label">Phone</label><input type="text" name="phone" id="editPhone" class="form-control"></div>
       <div class="form-group"><label class="form-label">Department</label><input type="text" name="department" id="editDept" class="form-control"></div>
       <div class="form-group">
-        <label class="form-label">Secondary Role</label>
-        <select name="secondary_role" id="editSecRole" class="form-control">
-          <option value="">— None —</option>
-          <option value="subject_staff">Subject Staff</option>
-          <option value="tutor">Tutor</option>
-          <option value="hod">HOD</option>
-          <option value="coordinator">Dept. Coordinator</option>
-        </select>
+        <label class="form-label">Roles <span style="color:#9ca3af;font-size:11px;">(check all that apply)</span></label>
+        <div class="role-checkbox-list" id="editRoleList">
+          {% for r in all_roles %}
+          <label class="role-checkbox-item" id="edit-lbl-{{ r }}">
+            <input type="checkbox" name="roles[]" value="{{ r }}" id="editRole_{{ r }}"
+                   onchange="syncRoleLabel(this,'edit-lbl-{{ r }}')"
+            > {{ r.replace('_',' ').title() }}
+          </label>
+          {% endfor %}
+        </div>
       </div>
       <div class="edit-staff-grid edit-staff-full">
         <div class="form-group">
@@ -341,14 +348,34 @@ function closeAddStaffModal() {
   document.body.classList.remove('add-staff-modal-open');
 }
 
-function openEditModal(uid, name, phone, dept, secRole, handlingYear, handlingSection) {
+function syncRoleLabel(checkbox, labelId) {
+  const label = document.getElementById(labelId);
+  if (label) label.classList.toggle('checked', checkbox.checked);
+}
+
+const allRoles = {{ all_roles|tojson }};
+
+function setEditRoles(rolesArray) {
+  allRoles.forEach(r => {
+    const cb  = document.getElementById('editRole_' + r);
+    const lbl = document.getElementById('edit-lbl-' + r);
+    if (!cb || !lbl) return;
+    const active = rolesArray.includes(r);
+    cb.checked = active;
+    lbl.classList.toggle('checked', active);
+  });
+}
+
+function openEditModal(uid, name, phone, dept, currentRoles, handlingYear, handlingSection) {
   document.getElementById('editName').value    = name;
   document.getElementById('editPhone').value   = phone;
   document.getElementById('editDept').value    = dept;
-  document.getElementById('editSecRole').value = secRole;
-  document.getElementById('editHandlingYear').value = handlingYear;
+  document.getElementById('editHandlingYear').value    = handlingYear;
   document.getElementById('editHandlingSection').value = handlingSection;
   document.getElementById('editForm').action   = `/admin/staff/edit/${uid}`;
+  // Pre-check the current roles
+  const roles = Array.isArray(currentRoles) ? currentRoles : [currentRoles].filter(Boolean);
+  setEditRoles(roles);
   document.getElementById('editAssignments').innerHTML = '';
   (assignmentData[uid] || []).forEach(row => addAssignmentRow('editAssignments', row));
   if (!(assignmentData[uid] || []).length) addAssignmentRow('editAssignments');

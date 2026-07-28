@@ -5,15 +5,18 @@ from flask_login import current_user
 
 
 def user_roles(user=None):
+    """Return a list of all role-name strings for the given user.
+
+    Reads from the many-to-many staff_roles table via user.roles_list.
+    Falls back gracefully to [user.role] for unauthenticated / anonymous proxies.
+    """
     user = user or current_user
-    roles = []
+    # Use the new many-to-many roles_list property when available
+    if hasattr(user, 'roles_list'):
+        return list(user.roles_list)
+    # Fallback for unauthenticated / anonymous proxies
     primary = getattr(user, 'role', None)
-    secondary = getattr(user, 'secondary_role', None)
-    if primary:
-        roles.append(primary)
-    if secondary and secondary not in roles:
-        roles.append(secondary)
-    return roles
+    return [primary] if primary else []
 
 
 def has_role(*required_roles, user=None):
@@ -30,11 +33,10 @@ def log_current_user_permissions(context):
         current_app.logger.info('[permissions:%s] anonymous-user', context)
         return
     current_app.logger.info(
-        '[permissions:%s] current_user.id=%s role=%s secondary_role=%s',
+        '[permissions:%s] current_user.id=%s roles=%s',
         context,
         current_user.id,
-        getattr(current_user, 'role', None),
-        getattr(current_user, 'secondary_role', None)
+        getattr(current_user, 'roles_list', [getattr(current_user, 'role', None)])
     )
 
 

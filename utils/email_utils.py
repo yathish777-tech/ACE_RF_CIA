@@ -140,9 +140,11 @@ def notify_tutor_after_staff(application):
 # 3. Tutor late (post-submission) → Coordinator notified
 # ─────────────────────────────────────────────────────────────────────────────
 def notify_coordinator_after_tutor_late(application):
-    from models import User
-    coordinators = User.query.filter(
-        (User.role == 'coordinator') | (User.secondary_role == 'coordinator'),
+    from models import User, StaffRoleEntry
+    coordinators = User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
+        StaffRoleEntry.role_name == 'coordinator',
         User.is_active == True
     ).all()
     subj = application.subject
@@ -176,9 +178,11 @@ def notify_coordinator_after_tutor_late(application):
 # 4. Tutor pre-approval → HOD notified directly
 # ─────────────────────────────────────────────────────────────────────────────
 def notify_hod_after_tutor_pre(application):
-    from models import User
-    hods = User.query.filter(
-        (User.role == 'hod') | (User.secondary_role == 'hod'),
+    from models import User, StaffRoleEntry
+    hods = User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
+        StaffRoleEntry.role_name == 'hod',
         User.is_active == True
     ).all()
     subj = application.subject
@@ -212,9 +216,11 @@ def notify_hod_after_tutor_pre(application):
 # 5. Coordinator approved late → HOD notified
 # ─────────────────────────────────────────────────────────────────────────────
 def notify_hod_after_coordinator_late(application):
-    from models import User
-    hods = User.query.filter(
-        (User.role == 'hod') | (User.secondary_role == 'hod'),
+    from models import User, StaffRoleEntry
+    hods = User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
+        StaffRoleEntry.role_name == 'hod',
         User.is_active == True
     ).all()
     subj = application.subject

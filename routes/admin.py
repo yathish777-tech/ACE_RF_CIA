@@ -3,7 +3,7 @@ from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
-from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, StaffAssignment, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance
+from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, StaffAssignment, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance, StaffRoleEntry
 from datetime import datetime, date, timedelta
 from functools import wraps
 from utils.permissions import has_role, has_any_role, role_required, log_current_user_permissions
@@ -668,8 +668,12 @@ def bulk_upload_staff():
 
             existing = User.query.filter(db.func.lower(User.email) == email).first()
             if existing:
-                if existing.role != role and not existing.secondary_role:
-                    existing.secondary_role = role
+                # Add the new role to staff_roles if not already assigned
+                has_role_entry = StaffRoleEntry.query.filter_by(
+                    user_id=existing.id, role_name=role
+                ).first()
+                if not has_role_entry:
+                    db.session.add(StaffRoleEntry(user_id=existing.id, role_name=role))
                 if dept:  existing.department = dept
                 if phone: existing.phone = phone
                 if h_year_int: existing.handling_year = h_year_int
@@ -681,6 +685,8 @@ def bulk_upload_staff():
                          handling_year=h_year_int, handling_section=h_sec_val)
                 u.set_password('staff123')
                 db.session.add(u)
+                db.session.flush()  # get u.id before inserting role entry
+                db.session.add(StaffRoleEntry(user_id=u.id, role_name=role))
                 added += 1
 
         db.session.commit()
@@ -1051,10 +1057,18 @@ def manage_staff():
     assignment_map = {}
     for assignment in assignments:
         assignment_map.setdefault(assignment.staff_id, []).append(assignment)
+    # Build map: staff_id -> list of role-name strings (from junction table)
+    all_role_entries = StaffRoleEntry.query.all()
+    staff_roles_map = {}
+    for entry in all_role_entries:
+        staff_roles_map.setdefault(entry.user_id, []).append(entry.role_name)
+    all_roles = ['subject_staff', 'tutor', 'hod', 'coordinator']
     return render_template('admin/manage_staff.html',
                            staff_list=staff_list,
                            subjects=subjects,
                            assignment_map=assignment_map,
+                           staff_roles_map=staff_roles_map,
+                           all_roles=all_roles,
                            sections=SECTIONS)
 
 
@@ -1065,25 +1079,35 @@ def add_staff():
     name = request.form.get('name','').strip()
     email = request.form.get('email','').strip().lower()
     phone = request.form.get('phone','').strip()
-    role = request.form.get('role','')
-    secondary = request.form.get('secondary_role','').strip() or None
+    # Multi-role: read list; first selected role becomes the primary for routing
+    selected_roles = [r for r in request.form.getlist('roles[]') if r]
+    if not selected_roles:
+        flash('Please select at least one role.', 'danger')
+        return redirect(url_for('admin.manage_staff'))
+    primary_role = selected_roles[0]
     department = request.form.get('department','').strip()
     password = request.form.get('password','staff123').strip() or 'staff123'
     h_year = request.form.get('handling_year','').strip()
     h_sec  = request.form.get('handling_section','').strip().upper()
-    if role == 'admin':
+    if primary_role == 'admin':
         flash('Cannot add Admin here.','danger')
         return redirect(url_for('admin.manage_staff'))
     existing = User.query.filter_by(email=email).first()
     if existing:
         flash('Email exists. Use Edit to change roles.','danger')
         return redirect(url_for('admin.manage_staff'))
-    u = User(name=name, email=email, phone=phone, role=role,
-             secondary_role=secondary, department=department,
+    u = User(name=name, email=email, phone=phone, role=primary_role,
+             department=department,
              handling_year=int(h_year) if h_year else None,
              handling_section=h_sec if h_sec in ('A','B','C') else None)
     u.set_password(password)
-    db.session.add(u); db.session.flush()
+    db.session.add(u)
+    db.session.flush()  # get u.id before inserting junction rows
+    seen = set()
+    for rn in selected_roles:
+        if rn and rn not in seen:
+            seen.add(rn)
+            db.session.add(StaffRoleEntry(user_id=u.id, role_name=rn))
     _replace_staff_assignments(u, _staff_assignment_payload())
     db.session.commit()
     flash(f'Staff added! Default password: {password}', 'success')
@@ -1098,8 +1122,16 @@ def edit_staff(uid):
     u.name = request.form.get('name', u.name).strip()
     u.phone = request.form.get('phone', u.phone or '').strip()
     u.department = request.form.get('department', u.department or '').strip()
-    sec = request.form.get('secondary_role','').strip()
-    u.secondary_role = sec if sec else None
+    # Multi-role: replace all existing junction rows with the submitted selection
+    selected_roles = [r for r in request.form.getlist('roles[]') if r]
+    if selected_roles:
+        StaffRoleEntry.query.filter_by(user_id=uid).delete()
+        seen = set()
+        for rn in selected_roles:
+            if rn and rn not in seen:
+                seen.add(rn)
+                db.session.add(StaffRoleEntry(user_id=uid, role_name=rn))
+        u.role = selected_roles[0]  # keep primary column in sync
     h_year = request.form.get('handling_year','').strip()
     h_sec  = request.form.get('handling_section','').strip().upper()
     u.handling_year = int(h_year) if h_year else None
@@ -1178,9 +1210,12 @@ def toggle_staff(uid):
 @admin_required
 def manage_subjects():
     subjects = Subject.query.order_by(Subject.semester, Subject.subject_name).all()
-    staff_list = User.query.filter(
-        (User.role == 'subject_staff') | (User.secondary_role == 'subject_staff'),
-        User.is_active == True).order_by(User.name).all()
+    staff_list = User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
+        StaffRoleEntry.role_name == 'subject_staff',
+        User.is_active == True
+    ).order_by(User.name).all()
     sss_list = SubjectStaffSection.query.order_by(
         SubjectStaffSection.semester, SubjectStaffSection.section).all()
     return render_template('admin/manage_subjects.html',
@@ -1655,10 +1690,11 @@ def _find_invigilator(identifier):
     identifier = _clean_cell(identifier)
     if not identifier:
         return None
-    query = User.query.filter(
+    query = User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
         User.is_active == True,
-        (User.role.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])) |
-        (User.secondary_role.in_(['subject_staff', 'tutor', 'hod', 'coordinator']))
+        StaffRoleEntry.role_name.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])
     )
     if '@' in identifier:
         return query.filter(db.func.lower(User.email) == identifier.lower()).first()
@@ -2197,9 +2233,10 @@ def seating_allotment():
         flash('Access denied.', 'danger')
         return redirect(url_for('main.index'))
     allotments = SeatingAllotment.query.order_by(SeatingAllotment.hall_number).all()
-    all_staff  = User.query.filter(
-        (User.role.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])) |
-        (User.secondary_role.in_(['subject_staff', 'tutor', 'hod', 'coordinator'])),
+    all_staff  = User.query.join(
+        StaffRoleEntry, StaffRoleEntry.user_id == User.id
+    ).filter(
+        StaffRoleEntry.role_name.in_(['subject_staff', 'tutor', 'hod', 'coordinator']),
         User.is_active == True
     ).order_by(User.name).all()
     hall_map = {}

@@ -13,6 +13,21 @@ from extensions import db
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# STAFF ROLES  (many-to-many junction — user ↔ role_name string)
+# Each row = one role assigned to one staff member. No limit on roles.
+# ─────────────────────────────────────────────────────────────────────────────
+class StaffRoleEntry(db.Model):
+    """One row per (user_id, role_name) pair in the staff_roles junction table."""
+    __tablename__ = 'staff_roles'
+
+    user_id   = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), primary_key=True)
+    role_name = db.Column(db.String(30), primary_key=True)
+
+    def __repr__(self):
+        return f'<StaffRoleEntry user={self.user_id} role={self.role_name}>'
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # USER
 # ─────────────────────────────────────────────────────────────────────────────
 class User(UserMixin, db.Model):
@@ -25,9 +40,11 @@ class User(UserMixin, db.Model):
     phone            = db.Column(db.String(20),  nullable=True)
     department       = db.Column(db.String(100), nullable=True)
 
-    # Role: student | subject_staff | tutor | hod | coordinator | admin
+    # Primary role column — kept for login-routing backward compatibility.
+    # Use .roles_list for the full set of assigned roles.
     role             = db.Column(db.String(30), nullable=False, default='student')
-    secondary_role   = db.Column(db.String(30), nullable=True)   # dual-role staff
+    # DEPRECATED — kept so existing data is not lost; new code uses staff_roles table.
+    secondary_role   = db.Column(db.String(30), nullable=True)
 
     is_active        = db.Column(db.Boolean, default=True, nullable=False)
 
@@ -47,10 +64,44 @@ class User(UserMixin, db.Model):
     register_number  = db.Column(db.String(30),  nullable=True)
 
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ── Many-to-many roles via staff_roles junction table ─────────────────
+    _roles_rel = db.relationship(
+        'StaffRoleEntry',
+        primaryjoin='User.id == foreign(StaffRoleEntry.user_id)',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+
+    @property
+    def roles_list(self):
+        """Return list of role-name strings from the staff_roles table.
+        Falls back to [self.role] when no junction rows exist yet (migration safety)."""
+        names = [r.role_name for r in self._roles_rel]
+        if not names and self.role:
+            names = [self.role]
+        return names
+
+    def set_roles(self, role_names):
+        """Replace all roles with the given list of strings (deduplicates automatically)."""
+        self._roles_rel.clear()
+        seen = set()
+        for rn in role_names:
+            rn = rn.strip()
+            if rn and rn not in seen:
+                seen.add(rn)
+                self._roles_rel.append(StaffRoleEntry(role_name=rn))
+        # Keep primary role column in sync for login routing
+        if role_names:
+            self.role = list(role_names)[0]
+
+    def has_staff_role(self, *role_names):
+        """Return True if the user holds any of the given roles."""
+        return bool(set(self.roles_list) & set(role_names))
+
     def display_role(self):
-        if self.secondary_role:
-         return f"{self.role.capitalize()} ({self.secondary_role.capitalize()})"
-        return self.role.capitalize()
+        names = self.roles_list
+        return ' / '.join(n.replace('_', ' ').title() for n in names) if names else self.role.capitalize()
     # ── helpers ──────────────────────────────────────────────────────────
     def set_password(self, password: str):
         self.password_hash = generate_password_hash(password)

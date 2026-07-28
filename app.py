@@ -36,8 +36,9 @@ def create_app(config_class=Config):
         user = User.query.get(int(user_id))
         if user:
             app.logger.info(
-                '[auth:user-loader] current_user.id=%s role=%s secondary_role=%s',
-                user.id, user.role, user.secondary_role
+                '[auth:user-loader] current_user.id=%s role=%s all_roles=%s',
+                user.id, user.role,
+                getattr(user, 'roles_list', [user.role])
             )
         return user
 
