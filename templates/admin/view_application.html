@@ -89,6 +89,11 @@
           <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">CIA No.</td><td style="padding:8px 0;"><span class="badge badge-primary">CIA - {{ app.cia_number }}</span></td></tr>
           <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">CIA Date</td><td style="padding:8px 0;">{{ app.cia_date.strftime('%d %B %Y') }}</td></tr>
           <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Reason</td><td style="padding:8px 0;">{{ app.reason_type.replace('_',' ').title() }}{% if app.reason_detail %}<br><span style="font-size:12px;color:#6b7280;">{{ app.reason_detail }}</span>{% endif %}</td></tr>
+          {% if app.attachment_filename %}
+          {% set proof_url = app.attachment_filename %}
+          {% set proof_download_url = proof_url.replace('/upload/', '/upload/fl_attachment/') if 'res.cloudinary.com' in proof_url and '/upload/' in proof_url else proof_url %}
+          <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Leave Proof</td><td style="padding:8px 0;"><a href="{{ proof_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">View</a> <a href="{{ proof_download_url }}" download class="btn btn-outline btn-sm">Download</a></td></tr>
+          {% endif %}
           <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Staff</td><td style="padding:8px 0;">{{ app.staff.name if app.staff else '—' }}</td></tr>
           <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Tutor</td><td style="padding:8px 0;">{{ app.tutor.name if app.tutor else '—' }}</td></tr>
         </table>

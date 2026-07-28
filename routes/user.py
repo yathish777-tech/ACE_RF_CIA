@@ -14,6 +14,7 @@ SEMESTER_TO_YEAR = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4}
 YEAR_LABEL = {1: 'First Year (I)', 2: 'First Year (I)', 3: 'Second Year (II)', 4: 'Second Year (II)',
               5: 'Third Year (III)', 6: 'Third Year (III)', 7: 'Fourth Year (IV)', 8: 'Fourth Year (IV)'}
 ALLOWED = {'pdf', 'jpg', 'jpeg', 'png'}
+MAX_PDF_SIZE = 5 * 1024 * 1024
 
 
 # =========================
@@ -407,6 +408,12 @@ def apply():
             ext = file.filename.split('.')[-1].lower()
             if ext not in ALLOWED:
                 errors['attachment'] = f'Invalid file type. Allowed: {", ".join(ALLOWED)}'
+            elif ext == 'pdf':
+                file.stream.seek(0, 2)
+                pdf_size = file.stream.tell()
+                file.stream.seek(0)
+                if pdf_size > MAX_PDF_SIZE:
+                    errors['attachment'] = 'PDF file size must not exceed 5 MB.'
 
         if not errors:
             semester = int(form['semester'])
