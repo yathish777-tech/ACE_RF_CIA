@@ -11,7 +11,12 @@ Functions called from routes:
   notify_student_final(application)
 """
 
+import logging
+
 from flask_mail import Message
+
+
+logger = logging.getLogger(__name__)
 
 
 def _get_mail():
@@ -141,12 +146,31 @@ def notify_tutor_after_staff(application):
 # ─────────────────────────────────────────────────────────────────────────────
 def notify_coordinator_after_tutor_late(application):
     from models import User, StaffRoleEntry
+
+    # Escalations must follow the student's current academic year.  Do not
+    # notify coordinators from another year when no matching coordinator exists.
+    student_year = application.student.year if application.student else None
+    if student_year is None:
+        logger.error(
+            "Cannot escalate application %s: student %s has no current academic year",
+            application.id, application.student_id,
+        )
+        return
+
     coordinators = User.query.join(
         StaffRoleEntry, StaffRoleEntry.user_id == User.id
     ).filter(
         StaffRoleEntry.role_name == 'coordinator',
-        User.is_active == True
+        User.is_active == True,
+        User.handling_year == student_year,
     ).all()
+    if not coordinators:
+        logger.error(
+            "No coordinator found for application %s and student year %s",
+            application.id, student_year,
+        )
+        return
+
     subj = application.subject
     for coord in coordinators:
         html = _card(
