@@ -3,7 +3,7 @@ from flask import (Blueprint, render_template, redirect, url_for,
                    flash, request, jsonify, current_app, send_file)
 from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
-from models import db, User, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, StaffAssignment, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance, StaffRoleEntry
+from models import db, User, Student, Subject, CIADate, RetestApplication, AbsenceRecord, SubjectStaffSection, StaffAssignment, SeatingAllotment, ExamAttendance, Hall, SeatingAllocation, HallAttendance, StaffRoleEntry
 from datetime import datetime, date, timedelta
 from functools import wraps
 from utils.permissions import has_role, has_any_role, role_required, log_current_user_permissions
@@ -212,10 +212,11 @@ def _find_student_by_register(register_number):
 
 def _generated_student_email(register_number):
     safe = re.sub(r'[^a-z0-9._-]+', '_', register_number.lower()).strip('._-') or uuid.uuid4().hex
-    candidate = f'{safe}@{STUDENT_EMAIL_DOMAIN}'
+    domain = STUDENT_EMAIL_DOMAIN
+    candidate = f"{safe}@{domain}"
     suffix = 2
     while User.query.filter(db.func.lower(User.email) == candidate.lower()).first():
-        candidate = f'{safe}{suffix}@{STUDENT_EMAIL_DOMAIN}'
+        candidate = f"{safe}{suffix}@{domain}"
         suffix += 1
     return candidate
 
@@ -233,7 +234,7 @@ def _validate_student_payload(register_number, name, year, section):
     return errors
 
 
-def _upsert_student_record(register_number, name, year, section, email='', phone=''):
+def _upsert_student_record(register_number, name, year, section, email='', phone='', upload_sequence=None, upload_batch_id=None):
     register_number = _normalize_register_number(register_number)
     name = _clean_cell(name)
     email = _clean_cell(email).lower()
@@ -247,6 +248,8 @@ def _upsert_student_record(register_number, name, year, section, email='', phone
     print(f"Section         : {section}")
     print(f"Email           : {email}")
     print(f"Phone           : {phone}")
+    if upload_sequence is not None:
+        print(f"Upload Sequence : {upload_sequence}")
 
     errors = _validate_student_payload(register_number, name, year, section)
     if errors:
@@ -272,8 +275,46 @@ def _upsert_student_record(register_number, name, year, section, email='', phone
         if not existing:
             existing = email_user
 
+    # ── Update or create dedicated Student table record ─────────────────
+    st_rec = Student.query.filter(
+        db.func.upper(Student.register_number) == register_number
+    ).first()
+    if not st_rec and email:
+        st_rec = Student.query.filter(
+            db.func.lower(Student.email) == email
+        ).first()
+
+    if st_rec:
+        st_rec.name = name
+        st_rec.register_number = register_number
+        st_rec.year = year
+        st_rec.section = section
+        if email:
+            st_rec.email = email
+        if phone:
+            st_rec.phone = phone
+        if upload_sequence is not None:
+            st_rec.upload_sequence = upload_sequence
+        if upload_batch_id:
+            st_rec.upload_batch_id = upload_batch_id
+        st_rec.is_active = True
+    else:
+        st_student = Student(
+            register_number=register_number,
+            name=name,
+            email=email or _generated_student_email(register_number),
+            phone=phone,
+            year=year,
+            section=section,
+            upload_sequence=upload_sequence,
+            upload_batch_id=upload_batch_id,
+            is_active=True
+        )
+        db.session.add(st_student)
+
+    # ── Update or create User table record (Auth / System) ──────────────
     if existing:
-        print("Updating existing student...")
+        print("Updating existing user/student...")
 
         existing.name = name
         existing.register_number = register_number
@@ -286,12 +327,15 @@ def _upsert_student_record(register_number, name, year, section, email='', phone
         if phone:
             existing.phone = phone
 
+        if upload_sequence is not None:
+            existing.upload_sequence = upload_sequence
+
         existing.is_active = True
 
         print("UPDATED SUCCESSFULLY")
         return 'updated', ''
 
-    print("Creating new student...")
+    print("Creating new user/student...")
 
     student = User(
         name=name,
@@ -301,6 +345,7 @@ def _upsert_student_record(register_number, name, year, section, email='', phone
         register_number=register_number,
         year=year,
         section=section,
+        upload_sequence=upload_sequence,
         is_active=True
     )
 
@@ -337,8 +382,7 @@ def _absence_student_year(record, student=None):
 
 
 def _absence_records_for_cia(cia_number, year_filter=None):
-    records = AbsenceRecord.query.filter_by(cia_number=cia_number)\
-        .order_by(AbsenceRecord.uploaded_at.desc()).all()
+    records = AbsenceRecord.query.filter_by(cia_number=cia_number)        .order_by(AbsenceRecord.uploaded_at.desc()).all()
     if not year_filter:
         return records
     filtered = []
@@ -425,6 +469,8 @@ def upload_students():
         print(df.head())
         print("\n========================================================\n")
 
+        upload_batch_id = datetime.utcnow().strftime('batch_%Y%m%d_%H%M%S')
+
         for index, row in df.iterrows():
 
             register_number = _normalize_register_number(
@@ -492,7 +538,9 @@ def upload_students():
                 year,
                 section,
                 email,
-                phone
+                phone,
+                upload_sequence=index + 1,
+                upload_batch_id=upload_batch_id
             )
 
             print(f"Status          : {status}")
@@ -1755,43 +1803,18 @@ def _cia_int(value):
     return int(text) if text in ('1', '2', '3') else None
 
 
-def _register_last_three_digits(register_number):
-    """Extract the numeric integer value of the last 3 digits from register_number.
-    Handles formatting safely (trailing quotes, whitespace, alphanumeric prefixes).
-    e.g. '2403617610421001' -> 1
-         '2403617610421010\'' -> 10
-         '6176AC23UCS004'   -> 4
-    """
-    if not register_number:
-        return float('inf')
-    digits = re.findall(r'\d+', str(register_number))
-    if not digits:
-        return float('inf')
-    last_seq = digits[-1]
-    last_3 = last_seq[-3:] if len(last_seq) >= 3 else last_seq
-    try:
-        return int(last_3)
-    except ValueError:
-        return float('inf')
-
-
 def _eligible_cia_students(selected_years):
-    """Return all students from the User table for the given year(s), ordered strictly by the
-    last 3 digits of their register number (with bulk upload order User.id as tiebreaker).
-    CIA exam seating allocation uses the actual student registry and ignores gender/retest filtering."""
-    students = User.query.filter(
-        User.role == 'student',
-        User.year.in_(selected_years),
-        User.register_number.isnot(None),
-        User.is_active == True
-    ).all()
+    # Return all students from the dedicated Student table for the given year(s), preserving the exact
+    # upload sequence (Student.upload_sequence) established during Student Bulk Upload.
+    students = Student.query.filter(
+        Student.year.in_(selected_years),
+        Student.register_number.isnot(None),
+        Student.is_active == True
+    ).order_by(Student.upload_sequence.asc(), Student.id.asc()).all()
+
     by_year = {year: [] for year in selected_years}
-    # Sort students by LAST 3 DIGITS of register number, preserving original bulk upload order (User.id)
-    sorted_students = sorted(
-        students,
-        key=lambda u: (_register_last_three_digits(u.register_number), u.id)
-    )
-    for student in sorted_students:
+    # Directly stream students into year queues in their exact bulk-upload sequence
+    for student in students:
         reg = _normalize_register_number(student.register_number)
         if reg and student.year in by_year:
             by_year[student.year].append({
@@ -1805,8 +1828,8 @@ def _eligible_cia_students(selected_years):
 
 
 def _next_student(year_students, year_offsets, required_year):
-    """Take the next available student only from the required year's queue.
-    If exhausted, return None (leaves the position VACANT without wrong-year substitution)."""
+    # Take the next available student only from the required year queue.
+    # If exhausted, return None (leaves position VACANT without substitution).
     student_list = year_students.get(required_year, [])
     index = year_offsets.get(required_year, 0)
     if index < len(student_list):
@@ -1817,17 +1840,8 @@ def _next_student(year_students, year_offsets, required_year):
 
 def generate_seating_per_column(year_students, hall, year_offsets, cia_id, exam_date,
                                 generated_by, col_patterns, students_per_bench=2):
-    """Allocate students into hall benches using a global bench capacity and column-specific year configuration.
-
-    BENCH-FIRST ASSIGNMENT ORDER:
-    For each column:
-      For each seat position (e.g. LEFT, then RIGHT):
-        For each bench in the column (Bench 1, Bench 2, Bench 3, ...):
-          Assign the next available student from that seat's configured year queue.
-    
-    This guarantees that consecutive register numbers are distributed across consecutive benches,
-    and NEVER placed side-by-side on the same bench.
-    """
+    # Allocate students into hall benches using global bench capacity and column-specific configuration.
+    # Bench-first assignment: seat position outer loop, bench inner loop.
     import math
     seats_per_bench = students_per_bench if students_per_bench in (1, 2, 3) else 2
     active_sides = ALL_SEAT_SIDES.get(seats_per_bench, ('LEFT', 'RIGHT'))
@@ -2218,46 +2232,78 @@ def download_seating_allocation(fmt):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=landscape(A4),
-        leftMargin=18, rightMargin=18, topMargin=30, bottomMargin=24
+        leftMargin=18, rightMargin=18, topMargin=24, bottomMargin=20
     )
     styles = getSampleStyleSheet(); els = []
     if not groups:
         els.append(Paragraph('No seating allocation found for the selected CIA/date.', styles['Normal']))
     for idx, group in enumerate(groups):
-        if idx: els.append(PageBreak())
         selected_years = ', '.join(sorted({row.year for row in group['rows'] if row.student_reg_no})) or '-'
-        els += [Paragraph('Adhiyamaan College of Engineering', styles['Title']),
-                Paragraph(f"CIA {cia_id} Seating Allocation - {exam_date.strftime('%d-%m-%Y')}", styles['Heading2']),
-                Paragraph(f"Hall: {group['hall'].hall_name or group['hall'].hall_number} | Capacity: {group['hall'].capacity} | Years: {selected_years}", styles['Normal']),
-                Paragraph(f"Block: {group['hall'].block or '-'} | Floor: {group['hall'].floor or '-'}", styles['Normal']), Spacer(1, 10)]
         columns = len(group['matrix'][0]['columns']) if group['matrix'] else 0
         sub_cols = len(group['seat_sides']) or 2
-        data = [[f'Column {col}' for col in range(1, columns + 1) for _ in range(sub_cols)]]
-        for matrix_row in group['matrix']:
-            row_data = []
-            for seats in matrix_row['columns']:
-                for seat_key in group['seat_sides']:
-                    seat = seats.get(seat_key)
-                    if seat and seat.student_reg_no:
-                        cell = f"{seat.student_reg_no}\n{seat.student_name or ''}\n{seat.year or ''}"
-                    else:
-                        cell = 'VACANT'
-                    row_data.append(cell)
-            data.append(row_data)
-        total_sub_cols = max(columns * sub_cols, 1)
-        seat_col_width = doc.width / total_sub_cols
-        table_font_size = 6 if columns >= 4 else 7
-        table = Table(data, repeatRows=1, colWidths=[seat_col_width] * total_sub_cols)
-        style = [('BACKGROUND',(0,0),(-1,0),colors.HexColor('#D6D6D6')), ('TEXTCOLOR',(0,0),(-1,0),colors.black),
-                 ('GRID',(0,0),(-1,-1),0.7,colors.black), ('ALIGN',(0,0),(-1,-1),'CENTER'),
-                 ('VALIGN',(0,0),(-1,-1),'MIDDLE'), ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),table_font_size)]
-        for col in range(columns):
-            base = col * sub_cols
-            style.append(('SPAN', (base, 0), (base + sub_cols - 1, 0)))
-            for offset, color in enumerate(('#B71C1C', '#16851B', '#1565C0')[:sub_cols]):
-                style.append(('TEXTCOLOR', (base + offset, 1), (base + offset, -1), colors.HexColor(color)))
-        table.setStyle(TableStyle(style))
-        els += [table, Spacer(1, 10), Paragraph(f'Generated by {current_user.name} on {datetime.now().strftime("%d %b %Y %H:%M")}', styles['Normal'])]
+        max_cols_per_page = 6 if sub_cols <= 2 else (4 if sub_cols == 3 else 8)
+
+        if columns <= max_cols_per_page:
+            col_chunks = [list(range(1, columns + 1))]
+        else:
+            col_chunks = [
+                list(range(start, min(start + max_cols_per_page, columns + 1)))
+                for start in range(1, columns + 1, max_cols_per_page)
+            ]
+
+        for chunk_idx, col_indices in enumerate(col_chunks):
+            if els:
+                els.append(PageBreak())
+
+            header_items = [
+                Paragraph('Adhiyamaan College of Engineering', styles['Title']),
+                Paragraph(f"CIA {cia_id} Seating Allocation - {exam_date.strftime('%d-%m-%Y')}", styles['Heading2']),
+                Paragraph(f"Hall: {group['hall'].hall_name or group['hall'].hall_number} | Capacity: {group['hall'].capacity} | Years: {selected_years}", styles['Normal']),
+                Paragraph(f"Block: {group['hall'].block or '-'} | Floor: {group['hall'].floor or '-'}", styles['Normal'])
+            ]
+            if len(col_chunks) > 1:
+                header_items.append(
+                    Paragraph(f"<b>Columns {col_indices[0]} – {col_indices[-1]}</b> (Page {chunk_idx + 1} of {len(col_chunks)})", styles['Italic'])
+                )
+            header_items.append(Spacer(1, 10))
+            els.extend(header_items)
+
+            data = [[f'Column {col}' for col in col_indices for _ in range(sub_cols)]]
+            for matrix_row in group['matrix']:
+                row_data = []
+                for col_num in col_indices:
+                    col_idx = col_num - 1
+                    seats = matrix_row['columns'][col_idx] if col_idx < len(matrix_row['columns']) else {}
+                    for seat_key in group['seat_sides']:
+                        seat = seats.get(seat_key)
+                        if seat and seat.student_reg_no:
+                            cell = f"{seat.student_reg_no}\n{seat.student_name or ''}\n{seat.year or ''}"
+                        else:
+                            cell = 'VACANT'
+                        row_data.append(cell)
+                data.append(row_data)
+
+            chunk_sub_cols = max(len(col_indices) * sub_cols, 1)
+            seat_col_width = doc.width / chunk_sub_cols
+            table_font_size = 7 if len(col_indices) <= 6 else 6
+            table = Table(data, repeatRows=1, colWidths=[seat_col_width] * chunk_sub_cols)
+            style = [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#D6D6D6')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('GRID', (0, 0), (-1, -1), 0.7, colors.black),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), table_font_size)
+            ]
+            for i, col_num in enumerate(col_indices):
+                base = i * sub_cols
+                style.append(('SPAN', (base, 0), (base + sub_cols - 1, 0)))
+                for offset, color in enumerate(('#B71C1C', '#16851B', '#1565C0')[:sub_cols]):
+                    style.append(('TEXTCOLOR', (base + offset, 1), (base + offset, -1), colors.HexColor(color)))
+            table.setStyle(TableStyle(style))
+            els += [table, Spacer(1, 10), Paragraph(f'Generated by {current_user.name} on {datetime.now().strftime("%d %b %Y %H:%M")}', styles['Normal'])]
+
     doc.build(els); buf.seek(0)
     return send_file(buf, as_attachment=True, download_name='seating_allocation.pdf', mimetype='application/pdf')
 
