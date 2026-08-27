@@ -1,6 +1,6 @@
 {% extends "dashboard_base.html" %}
-{% block title %}Seating Allocation{% endblock %}
-{% block page_title %}Seating Allocation{% endblock %}
+{% block title %}CIA Exam Seating Allocation{% endblock %}
+{% block page_title %}CIA Exam Seating Allocation{% endblock %}
 {% block sidebar_nav %}
 <span class="nav-section-label">Overview</span>
 <a href="{{ url_for('admin.dashboard') }}" class="nav-item">Dashboard</a>
@@ -14,9 +14,7 @@
 {% block content %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <style>
-  /* Prevent page-level horizontal scroll */
   body, .main-content, .page-content { overflow-x: hidden; }
-  /* Dedicated scroll container for the seating grid */
   .seating-scroll-container {
     overflow-x: auto;
     overflow-y: visible;
@@ -30,14 +28,66 @@
   .hall-layout { border-collapse: collapse; width: max-content; min-width: 100%; text-align: center; font-weight: 700; }
   .hall-layout th, .hall-layout td { border: 1px solid #333; padding: 11px 8px; white-space: nowrap; }
   .hall-layout th { background: #d6d6d6; color: #111; font-size: 15px; position: sticky; top: 0; z-index: 2; }
-  .hall-layout .seat-1 { color: #bc1616; } .hall-layout .seat-2 { color: #16851b; } .hall-layout .seat-3 { color: #1565c0; }
-  .hall-layout .vacant { color: #777; font-weight: 600; }
+  .hall-layout .seat-LEFT { color: #bc1616; } 
+  .hall-layout .seat-MIDDLE { color: #16851b; } 
+  .hall-layout .seat-RIGHT { color: #1565c0; }
+  .hall-layout .vacant { color: #888; font-weight: 600; font-style: italic; }
   .seat-reg { font-weight: 700; font-size: 13px; }
   .seat-name { font-weight: 500; font-size: 11px; color: #555; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
   .seat-year { font-weight: 600; font-size: 10px; color: #888; margin-top: 1px; }
+
+  /* Step Workflow Styling */
+  .workflow-step {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-weight: 700;
+    color: #1e293b;
+    font-size: 15px;
+  }
+  .step-badge {
+    background: #1a237e;
+    color: #fff;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .column-card {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 12px;
+  }
+  .preview-bench {
+    display: inline-flex;
+    gap: 6px;
+    background: #fff;
+    border: 1px solid #94a3b8;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 700;
+  }
 </style>
+
 <div class="page-header">
-  <div><h2>Seating Allocation</h2><p>Generate a dynamic seating plan based on hall configuration.</p></div>
+  <div>
+    <h2>CIA Exam Seating Allocation</h2>
+    <p>Configure bench capacity, column patterns, and generate bench-first seating.</p>
+  </div>
   {% if selected_cia and selected_date %}
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     <a class="btn btn-outline" href="{{ url_for('admin.download_seating_allocation', fmt='excel', cia_id=selected_cia, exam_date=selected_date) }}">Excel</a>
@@ -46,25 +96,133 @@
   {% endif %}
 </div>
 
-<div class="card" style="margin-bottom:22px;">
-  <div class="card-header"><h3>Generate Allocation</h3></div>
+<!-- ==================== WORKFLOW FORM ==================== -->
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header"><h3 style="margin:0;">Seating Allocation Configuration</h3></div>
   <div class="card-body">
-    <form method="POST" id="allocationForm" style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:14px;align-items:end;">
-      <div><label class="form-label">Select Years</label><div style="display:flex;gap:12px;flex-wrap:wrap;"><label><input type="checkbox" name="years" value="2"> II Year</label><label><input type="checkbox" name="years" value="3" checked> III Year</label><label><input type="checkbox" name="years" value="4" checked> IV Year</label></div></div>
-      <div><label class="form-label">Number of Halls</label><input type="number" name="hall_count" class="form-control" min="1" value="{{ halls|length or 1 }}" required></div>
-      <div><label class="form-label">CIA Number</label><select name="cia_id" class="form-control" required><option value="1">CIA 1</option><option value="2">CIA 2</option><option value="3">CIA 3</option></select></div>
-      <div><label class="form-label">Date of Exam</label><input type="date" name="exam_date" class="form-control" required value="{{ selected_date.isoformat() if selected_date else '' }}"></div>
-      <div style="grid-column:1 / -1;max-width:520px;"><label class="form-label">Select Students</label><input id="studentSearch" type="search" class="form-control" placeholder="Search by register number or name" disabled><div id="studentPicker" style="border:1px solid #ddd;border-radius:6px;max-height:230px;overflow:auto;margin-top:8px;padding:8px;"></div><small id="studentHint" style="color:#666;">Loading students…</small></div>
-      <button class="btn btn-primary" style="grid-column:1 / -1;width:auto;justify-self:start;">Generate Seating Allocation</button>
+    <form method="POST" id="seatingAllocationForm" action="{{ url_for('admin.seating_allocation') }}">
+      
+      <!-- STEP 1: SELECT STUDENT YEARS -->
+      <div class="workflow-step">
+        <div class="step-header">
+          <span class="step-badge">1</span>
+          <span>Select Student Year(s)</span>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;">
+          <label style="font-weight:600;cursor:pointer;"><input type="checkbox" name="years" value="2" class="year-chk"> 2nd Year (II Year)</label>
+          <label style="font-weight:600;cursor:pointer;"><input type="checkbox" name="years" value="3" class="year-chk" checked> 3rd Year (III Year)</label>
+          <label style="font-weight:600;cursor:pointer;"><input type="checkbox" name="years" value="4" class="year-chk" checked> 4th Year (IV Year)</label>
+        </div>
+      </div>
+
+      <!-- STEP 2: SELECT CIA NUMBER & DATE -->
+      <div class="workflow-step">
+        <div class="step-header">
+          <span class="step-badge">2</span>
+          <span>Select CIA Exam Details</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
+          <div>
+            <label class="form-label" style="font-weight:600;">CIA Number</label>
+            <select name="cia_id" class="form-control" required>
+              <option value="1" {% if selected_cia == 1 %}selected{% endif %}>CIA 1</option>
+              <option value="2" {% if selected_cia == 2 %}selected{% endif %}>CIA 2</option>
+              <option value="3" {% if selected_cia == 3 %}selected{% endif %}>CIA 3</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;">CIA Exam Date</label>
+            <input type="date" name="exam_date" class="form-control" required value="{{ selected_date.isoformat() if selected_date else '' }}">
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: SELECT HALLS -->
+      <div class="workflow-step">
+        <div class="step-header">
+          <span class="step-badge">3</span>
+          <span>Select Hall(s)</span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <label style="font-size:13px;font-weight:600;color:#1e293b;cursor:pointer;">
+            <input type="checkbox" id="selectAllHalls"> <strong>Select All Halls</strong>
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:10px;max-height:160px;overflow-y:auto;padding:8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;">
+          {% for h in halls %}
+          <label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" name="hall_ids" value="{{ h.id }}" class="hall-chk" checked>
+            <span>{{ h.hall_name or h.hall_number }} (Cap: {{ h.capacity }})</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- STEP 4: GLOBAL STUDENTS PER BENCH -->
+      <div class="workflow-step">
+        <div class="step-header">
+          <span class="step-badge">4</span>
+          <span>Select How Many Students Per Bench (Global Setting)</span>
+        </div>
+        <div style="max-width:320px;">
+          <select name="students_per_bench" id="studentsPerBench" class="form-control" style="font-weight:700;">
+            <option value="1">1 Student Per Bench (LEFT)</option>
+            <option value="2" selected>2 Students Per Bench (LEFT & RIGHT)</option>
+            <option value="3">3 Students Per Bench (LEFT, MIDDLE & RIGHT)</option>
+          </select>
+          <small style="color:#64748b;display:block;margin-top:4px;">Applies uniformly across all benches in all selected halls and columns.</small>
+        </div>
+      </div>
+
+      <!-- STEP 5: CONFIGURE YEAR FOR EACH POSITION IN EACH COLUMN -->
+      <div class="workflow-step">
+        <div class="step-header">
+          <span class="step-badge">5</span>
+          <span>Configure Year for Each Column Position</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;" id="columnConfigurations">
+          <!-- Populated dynamically based on students_per_bench and selected years -->
+        </div>
+      </div>
+
+      <!-- STEP 6: PREVIEW SEATING PATTERN -->
+      <div class="workflow-step">
+        <div class="step-header">
+          <span class="step-badge">6</span>
+          <span>Preview Seating Pattern</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;" id="patternPreviewGrid">
+          <!-- Dynamic visual preview of the 4 columns -->
+        </div>
+      </div>
+
+      <!-- STEP 7: AVAILABILITY & GENERATE BUTTON -->
+      <div class="workflow-step" style="background:#eff6ff;border-color:#bfdbfe;">
+        <div class="step-header" style="color:#1e40af;">
+          <span class="step-badge" style="background:#2563eb;">7</span>
+          <span>Generate CIA Exam Seating Allocation</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+          <div>
+            <div id="studentAvailabilityText" style="font-weight:700;color:#1e3a8a;font-size:14px;">Loading student registry availability…</div>
+            <div id="studentBreakdownText" style="font-size:12px;color:#3b82f6;margin-top:2px;"></div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="padding:10px 24px;font-size:15px;font-weight:700;">
+            Generate Seating Allocation
+          </button>
+        </div>
+      </div>
+
     </form>
   </div>
 </div>
 
+<!-- ==================== DISPLAY ALLOCATION RESULTS ==================== -->
 {% if selected_cia and selected_date %}
 <div class="card" style="margin-bottom:20px;">
   <div class="card-body" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;">
     <input type="hidden" id="currentCia" value="{{ selected_cia }}"><input type="hidden" id="currentDate" value="{{ selected_date.isoformat() }}">
-    <div><label class="form-label">Change Exam Date</label><input type="date" id="newExamDate" class="form-control" value="{{ selected_date.isoformat() }}"></div>
+    <div><label class="form-label" style="font-weight:600;">Change Exam Date</label><input type="date" id="newExamDate" class="form-control" value="{{ selected_date.isoformat() }}"></div>
     <button class="btn btn-outline" onclick="updateExamDate()">Save Date</button>
     <form method="POST" action="{{ url_for('admin.regenerate_seating') }}" onsubmit="return confirm('Clear this allocation and regenerate?');">
       <input type="hidden" name="cia_id" value="{{ selected_cia }}"><input type="hidden" name="exam_date" value="{{ selected_date }}">
@@ -77,21 +235,37 @@
 {% for group in groups %}
 <div class="card" style="margin-bottom:24px;">
   <div class="card-header">
-    <h3>{{ group.hall.hall_name }} | Total: {{ group.rows|selectattr('student_reg_no')|list|length }} students | CIA: CIA {{ selected_cia }} | Date: {{ selected_date.strftime('%d-%m-%Y') }}</h3>
-    <form method="POST" action="{{ url_for('admin.regenerate_single_hall', hall_id=group.hall.id) }}" onsubmit="return confirm('Regenerate only this hall?');">
-      <input type="hidden" name="cia_id" value="{{ selected_cia }}"><input type="hidden" name="exam_date" value="{{ selected_date }}">
-      <button class="btn btn-outline btn-sm">Regenerate Single Hall</button>
-    </form>
+    <h3 style="margin:0;">{{ group.hall.hall_name or group.hall.hall_number }} | Total: {{ group.rows|selectattr('student_reg_no')|list|length }} students | CIA {{ selected_cia }} | Date: {{ selected_date.strftime('%d-%m-%Y') }}</h3>
   </div>
   <div class="seating-scroll-container">
     <table class="hall-layout">
-      <thead><tr>{% for column in group.matrix[0].columns %}<th colspan="3">Column {{ loop.index }}</th>{% endfor %}</tr></thead>
+      <thead>
+        <tr>
+          {% set sub_cols_count = group.seat_sides|length %}
+          {% for column in group.matrix[0].columns %}
+          <th colspan="{{ sub_cols_count }}">Column {{ loop.index }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
       <tbody>
-      {% for matrix_row in group.matrix %}<tr>
+      {% for matrix_row in group.matrix %}
+        <tr>
         {% for seats in matrix_row.columns %}
-          {% for seat_side in ('SEAT_1', 'SEAT_2', 'SEAT_3') %}{% set seat = seats.get(seat_side) %}<td class="seat-{{ loop.index }}">{% if seat and seat.student_reg_no %}<div class="seat-reg">{{ seat.student_reg_no }}</div><div class="seat-name">{{ seat.student_name or '' }}</div><div class="seat-year">{{ seat.year or '' }}</div>{% else %}<span class="vacant">VACANT</span>{% endif %}</td>{% endfor %}
+          {% for seat_side in group.seat_sides %}
+            {% set seat = seats.get(seat_side) %}
+            <td class="seat-{{ seat_side }}">
+              {% if seat and seat.student_reg_no %}
+                <div class="seat-reg">{{ seat.student_reg_no }}</div>
+                <div class="seat-name">{{ seat.student_name or '' }}</div>
+                <div class="seat-year">{{ seat.year or '' }}</div>
+              {% else %}
+                <span class="vacant">VACANT</span>
+              {% endif %}
+            </td>
+          {% endfor %}
         {% endfor %}
-      </tr>{% endfor %}
+        </tr>
+      {% endfor %}
       </tbody>
     </table>
   </div>
@@ -121,8 +295,11 @@
   </div>
 </div>
 {% else %}
-<div class="empty-state"><h4>No allocation loaded</h4><p>Generate a plan or open one with CIA/date filters.</p></div>
+{% if selected_cia and selected_date %}
+<div class="empty-state"><h4>No seating records found for this CIA and date.</h4></div>
+{% endif %}
 {% endfor %}
+
 {% endblock %}
 {% block scripts %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -130,15 +307,156 @@
 <script>
 $(function(){
   $('.allocation-table').DataTable({pageLength:40, ordering:false});
-  const picker=document.getElementById('studentPicker'), search=document.getElementById('studentSearch'), hint=document.getElementById('studentHint');
-  const selectedStudentIds=new Set(), seenStudentIds=new Set();
-  const years=()=>[...document.querySelectorAll('input[name="years"]:checked')].map(input=>input.value);
-  const rememberSelection=()=>picker.querySelectorAll('input[name="student_ids"]').forEach(input=>{seenStudentIds.add(input.value);if(input.checked)selectedStudentIds.add(input.value);else selectedStudentIds.delete(input.value);});
-  const render=students=>{picker.innerHTML=students.length?`<label style="display:block;padding:4px 0;border-bottom:1px solid #eee;"><input id="selectAllStudents" type="checkbox"> <strong>Select All</strong></label>`+students.map(student=>{const id=String(student.id),checked=!seenStudentIds.has(id)||selectedStudentIds.has(id);return `<label class="student-option" data-search="${(student.register_number+' '+student.name).toLowerCase()}" style="display:block;padding:4px 0;"><input type="checkbox" name="student_ids" value="${student.id}"${checked?' checked':''}> ${student.register_number} - ${student.name} (Year ${student.year})</label>`;}).join(''):'<span>No students found for the selected years.</span>';search.disabled=!students.length;const inputs=[...picker.querySelectorAll('input[name="student_ids"]')];const updateSummary=()=>{const count=inputs.filter(input=>input.checked).length;hint.textContent=students.length?`${count} of ${students.length} students selected.`:'No students available.';};const all=document.getElementById('selectAllStudents');const updateAll=()=>{all.checked=inputs.length&&inputs.every(input=>input.checked);all.indeterminate=inputs.some(input=>input.checked)&&!all.checked;};if(all)all.addEventListener('change',()=>{inputs.forEach(input=>{seenStudentIds.add(input.value);input.checked=all.checked;if(all.checked)selectedStudentIds.add(input.value);else selectedStudentIds.delete(input.value);});updateSummary();});inputs.forEach(input=>input.addEventListener('change',()=>{seenStudentIds.add(input.value);if(input.checked)selectedStudentIds.add(input.value);else selectedStudentIds.delete(input.value);updateAll();updateSummary();}));updateAll();updateSummary();};
-  const loadStudents=async()=>{rememberSelection();const selectedYears=years();search.value='';if(!selectedYears.length){render([]);return;}hint.textContent='Loading students…';try{const response=await fetch(`{{ url_for('admin.seating_allocation_students') }}?${new URLSearchParams(selectedYears.map(year=>['years',year]))}`);if(!response.ok)throw new Error('Unable to load students');render((await response.json()).students||[]);}catch(error){picker.innerHTML='<span>Unable to load students. Please try again.</span>';hint.textContent=error.message;search.disabled=true;}};
-  search.addEventListener('input',()=>picker.querySelectorAll('.student-option').forEach(option=>option.style.display=option.dataset.search.includes(search.value.toLowerCase())?'block':'none'));
-  document.querySelectorAll('input[name="years"]').forEach(input=>input.addEventListener('change',loadStudents));loadStudents();
+
+  const yearCheckboxes = document.querySelectorAll('.year-chk');
+  const studentsPerBenchSelect = document.getElementById('studentsPerBench');
+  const columnConfigsContainer = document.getElementById('columnConfigurations');
+  const patternPreviewContainer = document.getElementById('patternPreviewGrid');
+  const availabilityText = document.getElementById('studentAvailabilityText');
+  const breakdownText = document.getElementById('studentBreakdownText');
+
+  // Select all halls checkbox
+  const selectAllHalls = document.getElementById('selectAllHalls');
+  const hallCheckboxes = document.querySelectorAll('.hall-chk');
+  if(selectAllHalls) {
+    selectAllHalls.addEventListener('change', () => {
+      hallCheckboxes.forEach(chk => chk.checked = selectAllHalls.checked);
+    });
+    hallCheckboxes.forEach(chk => {
+      chk.addEventListener('change', () => {
+        selectAllHalls.checked = [...hallCheckboxes].every(c => c.checked);
+        selectAllHalls.indeterminate = [...hallCheckboxes].some(c => c.checked) && !selectAllHalls.checked;
+      });
+    });
+    selectAllHalls.checked = [...hallCheckboxes].every(c => c.checked);
+  }
+
+  // Get active selected years as array of ints
+  function getSelectedYears() {
+    return [...document.querySelectorAll('.year-chk:checked')].map(c => parseInt(c.value));
+  }
+
+  const YEAR_LABELS = { 2: '2nd Year', 3: '3rd Year', 4: '4th Year' };
+  const ROMAN_LABELS = { 2: 'II', 3: 'III', 4: 'IV' };
+
+  // Re-render Column Position Year Selectors based on global students per bench
+  function renderColumnPositionSelectors() {
+    const seatsCount = parseInt(studentsPerBenchSelect.value) || 2;
+    const selectedYears = getSelectedYears();
+
+    if(!selectedYears.length) {
+      columnConfigsContainer.innerHTML = '<div style="color:#ef4444;font-weight:600;">Please select at least one student year in Step 1.</div>';
+      patternPreviewContainer.innerHTML = '';
+      return;
+    }
+
+    let positions = ['LEFT'];
+    if(seatsCount === 2) positions = ['LEFT', 'RIGHT'];
+    else if(seatsCount === 3) positions = ['LEFT', 'MIDDLE', 'RIGHT'];
+
+    let html = '';
+    for(let col = 1; col <= 4; col++) {
+      html += `
+        <div class="column-card">
+          <div style="font-weight:700;color:#1a237e;margin-bottom:8px;font-size:14px;">Column ${col}</div>
+      `;
+      positions.forEach((pos, idx) => {
+        // Default assignment logic to alternate nicely
+        let defaultYear = selectedYears[0];
+        if(seatsCount === 2) {
+          defaultYear = (col % 2 === 1) ? (idx === 0 ? selectedYears[0] : (selectedYears[1] || selectedYears[0]))
+                                        : (idx === 0 ? (selectedYears[1] || selectedYears[0]) : selectedYears[0]);
+        } else if(seatsCount === 3) {
+          defaultYear = (col % 2 === 1) ? (idx === 1 ? (selectedYears[1] || selectedYears[0]) : selectedYears[0])
+                                        : (idx === 1 ? selectedYears[0] : (selectedYears[1] || selectedYears[0]));
+        }
+
+        html += `
+          <div style="margin-bottom:6px;">
+            <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:2px;">${pos}</label>
+            <select name="col_${col}_years[]" class="form-control col-pos-select" data-col="${col}" data-pos="${pos}" style="font-size:13px;padding:4px 8px;height:auto;">
+              ${selectedYears.map(yr => `<option value="${yr}" ${yr === defaultYear ? 'selected' : ''}>${YEAR_LABELS[yr]}</option>`).join('')}
+            </select>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+    columnConfigsContainer.innerHTML = html;
+
+    // Attach change listener to update preview
+    document.querySelectorAll('.col-pos-select').forEach(sel => {
+      sel.addEventListener('change', updatePatternPreview);
+    });
+
+    updatePatternPreview();
+  }
+
+  // Update Visual Pattern Preview in Step 6
+  function updatePatternPreview() {
+    let previewHtml = '';
+    for(let col = 1; col <= 4; col++) {
+      const selects = document.querySelectorAll(`select[name="col_${col}_years[]"]`);
+      const pattern = [...selects].map(s => parseInt(s.value));
+      
+      previewHtml += `
+        <div class="column-card" style="text-align:center;">
+          <div style="font-weight:700;margin-bottom:6px;color:#1a237e;">Column ${col}</div>
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+            <div class="preview-bench">
+              ${pattern.map(yr => `<span>[ ${ROMAN_LABELS[yr] || yr} ]</span>`).join(' ')}
+            </div>
+            <div class="preview-bench">
+              ${pattern.map(yr => `<span>[ ${ROMAN_LABELS[yr] || yr} ]</span>`).join(' ')}
+            </div>
+            <div class="preview-bench">
+              ${pattern.map(yr => `<span>[ ${ROMAN_LABELS[yr] || yr} ]</span>`).join(' ')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    patternPreviewContainer.innerHTML = previewHtml;
+  }
+
+  // Fetch student availability directly from database API
+  async function fetchStudentAvailability() {
+    const selectedYears = getSelectedYears();
+    if(!selectedYears.length) {
+      availabilityText.textContent = '0 students available for seating allocation.';
+      breakdownText.textContent = 'Please select at least one student year.';
+      return;
+    }
+    availabilityText.textContent = 'Checking student database availability…';
+    breakdownText.textContent = '';
+    try {
+      const qs = new URLSearchParams(selectedYears.map(y => ['years', y])).toString();
+      const res = await fetch(`{{ url_for('admin.seating_allocation_students') }}?${qs}`);
+      if(!res.ok) throw new Error('Failed to load student count');
+      const data = await res.json();
+      availabilityText.textContent = `${data.total} students available for seating allocation.`;
+      const breakdowns = Object.entries(data.by_year || {}).map(([yr, count]) => `${yr}: ${count}`).join(' | ');
+      breakdownText.textContent = breakdowns ? `Breakdown: ${breakdowns}` : '';
+    } catch(err) {
+      availabilityText.textContent = 'Unable to check student availability.';
+      breakdownText.textContent = '';
+    }
+  }
+
+  yearCheckboxes.forEach(chk => {
+    chk.addEventListener('change', () => {
+      renderColumnPositionSelectors();
+      fetchStudentAvailability();
+    });
+  });
+
+  studentsPerBenchSelect.addEventListener('change', renderColumnPositionSelectors);
+
+  // Initial load
+  renderColumnPositionSelectors();
+  fetchStudentAvailability();
 });
+
 function editRow(btn){const tr=btn.closest('tr');const cell=tr.children[2];const val=cell.innerText.trim()==='VACANT'?'':cell.innerText.trim();cell.innerHTML=`<input class="form-control reg-input" value="${val}">`;tr.querySelector('.hall-select').disabled=false;tr.querySelector('.save-btn').style.display='inline-flex';btn.style.display='none';}
 async function postForm(url, data){const res=await fetch(url,{method:'POST',body:data});const json=await res.json();if(!res.ok){alert(json.message||'Save failed');return null;}return json;}
 async function saveRow(btn){const tr=btn.closest('tr');const fd=new FormData();fd.append('allocation_id',tr.dataset.id);fd.append('student_reg_no',tr.querySelector('.reg-input')?.value||'');fd.append('hall_id',tr.querySelector('.hall-select').value);const ok=await postForm('{{ url_for("admin.update_seat") }}',fd);if(ok) location.reload();}
@@ -146,3 +464,4 @@ async function swapRow(btn){const tr=btn.closest('tr');const fd=new FormData();f
 async function updateExamDate(){const fd=new FormData();fd.append('cia_id',document.getElementById('currentCia').value);fd.append('old_date',document.getElementById('currentDate').value);fd.append('new_date',document.getElementById('newExamDate').value);const ok=await postForm('{{ url_for("admin.update_exam_date") }}',fd);if(ok) window.location=ok.redirect;}
 </script>
 {% endblock %}
+

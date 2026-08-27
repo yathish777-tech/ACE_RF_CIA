@@ -111,7 +111,30 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return f'<User {self.email} [{self.role}]>'
-    
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STUDENT (Dedicated table for Student Registry & CIA Seating Allocation)
+# ─────────────────────────────────────────────────────────────────────────────
+class Student(db.Model):
+    __tablename__ = 'student'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    register_number = db.Column(db.String(30), nullable=False, index=True)
+    name            = db.Column(db.String(120), nullable=False)
+    email           = db.Column(db.String(150), nullable=True)
+    phone           = db.Column(db.String(20),  nullable=True)
+    department      = db.Column(db.String(100), nullable=True)
+    year            = db.Column(db.Integer,     nullable=True)   # 1-4
+    section         = db.Column(db.String(5),   nullable=True)   # A / B / C
+    upload_sequence = db.Column(db.Integer,     nullable=True)
+    upload_batch_id = db.Column(db.String(50),  nullable=True)
+    is_active       = db.Column(db.Boolean, default=True, nullable=False)
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Student {self.register_number} - {self.name}>'
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SUBJECT
